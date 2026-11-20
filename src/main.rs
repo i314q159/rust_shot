@@ -1,8 +1,9 @@
-// RustShot — 轻量级 Windows 截图 / 标注 / 贴图工具
+// RustShot — 轻量级 Windows 截图 / 标注工具
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
 mod capture;
+mod config;
 mod fonts;
 mod overlay;
 mod shapes;
@@ -28,7 +29,6 @@ fn main() {
         match args[i].as_str() {
             "--capture" | "-c" => start = app::Start::Region,
             "--full" | "-f" => start = app::Start::Full,
-            "--pin" | "-p" => start = app::Start::Pin,
             "--selftest" => {
                 selftest = Some(
                     args.get(i + 1)
@@ -38,9 +38,7 @@ fn main() {
                 i += 1;
             }
             "--help" | "-h" => {
-                println!(
-                    "RustShot\n  (无参数)        启动主面板\n  --capture, -c  立即区域截图\n  --full, -f     立即全屏截图到剪贴板\n  --pin, -p      把剪贴板图片贴到屏幕\n  --selftest <png> 离屏渲染一张测试图并退出"
-                );
+                show_help();
                 return;
             }
             _ => {}
@@ -59,7 +57,6 @@ fn main() {
         let cmd = match start {
             app::Start::Region => worker::CMD_REGION,
             app::Start::Full => worker::CMD_FULL,
-            app::Start::Pin => worker::CMD_PIN,
             app::Start::Panel => worker::CMD_PANEL,
         };
         if worker::forward_to_running(cmd) {
@@ -84,6 +81,29 @@ fn main() {
         util::log(&format!("eframe exited with error: {e}"));
     }
     util::log("app loop finished");
+}
+
+/// `--help` must be visible in a GUI-subsystem build, where stdout goes nowhere.
+fn show_help() {
+    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK, MessageBoxW};
+    use windows::core::PCWSTR;
+    let text = util::wide(
+        "RustShot\n\n\
+         无参数            启动主面板\n\
+         --capture, -c     立即区域截图\n\
+         --full, -f        立即全屏截图到剪贴板\n\
+         --selftest <png>  离屏渲染一张测试图并退出\n\n\
+         全局热键：F1 区域截图 · F2 全屏 · Ctrl+Alt+Q 退出",
+    );
+    let title = util::wide("RustShot");
+    unsafe {
+        MessageBoxW(
+            None,
+            PCWSTR(text.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            MB_OK | MB_ICONINFORMATION,
+        );
+    }
 }
 
 /// Render a sample annotated image without opening any window; useful for

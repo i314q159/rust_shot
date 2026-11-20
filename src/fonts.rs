@@ -43,6 +43,7 @@ fn load() -> Option<LoadedFont> {
             });
         }
     }
+    crate::util::log("no usable CJK system font found, falling back to egui defaults");
     None
 }
 
@@ -81,4 +82,15 @@ pub fn install_egui_font(ctx: &egui::Context) {
             .push("cjk".to_owned());
     }
     ctx.set_fonts(defs);
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_font_is_found_on_this_system() {
+        // Every supported Windows ships at least one of the candidates.
+        let font = super::cjk().expect("system font");
+        assert!(font.bytes.len() > 100_000);
+        assert!(font.index < 8);
+    }
 }

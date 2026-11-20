@@ -1,7 +1,7 @@
 # RustShot
 
 一个用 Rust 写的 Windows 轻量级截图工具，参照 Snipaste / SnowShot 的交互习惯：
-**冻结屏幕 → 框选 → 标注 → 复制 / 保存 / 贴图**，常驻托盘、全局热键随时唤起。
+**冻结屏幕 → 框选 → 标注 → 复制 / 保存**，常驻托盘、全局热键随时唤起。
 
 ## 功能
 
@@ -27,16 +27,11 @@
 **输出**
 - `Enter` / `Ctrl+C`：复制到剪贴板（可选同时自动存 PNG）
 - `Ctrl+S`：另存为（PNG）
-- `Ctrl+T`：贴图，把当前结果钉在屏幕上
 - `Ctrl+A`：全选整屏；`Esc` / 右键：取消
-
-**贴图窗口**
-- 无边框置顶，拖动移动、滚轮缩放、双击或右键关闭、`Esc` 关闭
-- 可同时贴多张，`F3` 可直接把剪贴板里的图片贴出来
 
 **常驻**
 - 关闭主面板（点 ×）默认**最小化到托盘**，不退出
-- 托盘左键单击直接截图，右键菜单：区域截图 / 全屏 / 贴图 / 显示主面板 / 退出
+- 托盘左键单击直接截图，右键菜单：区域截图 / 全屏截图 / 显示主面板 / 退出
 - 单实例：重复启动会把请求转给已运行的实例
 
 ## 全局热键
@@ -45,7 +40,6 @@
 | --- | --- |
 | `F1` | 区域截图 |
 | `F2` | 全屏截图到剪贴板 |
-| `F3` | 贴出剪贴板图片 |
 | `Ctrl+Alt+S` | 区域截图（备用，避免 F1 被其它软件占用） |
 | `Ctrl+Alt+Q` | 退出 |
 
@@ -59,11 +53,10 @@
 rust_shot.exe                 启动主面板
 rust_shot.exe --capture, -c   立即区域截图（已有实例则转发给它）
 rust_shot.exe --full, -f      立即全屏截图到剪贴板
-rust_shot.exe --pin, -p       把剪贴板图片贴到屏幕
 rust_shot.exe --selftest a.png  离屏渲染一张测试图（校核导出管线，不开窗口）
 ```
 
-截图默认保存在 `%USERPROFILE%\Pictures\RustShot`，可在面板里更改。
+截图默认保存在 `%USERPROFILE%\Pictures\RustShot`，可在面板里更改；保存目录和"自动保存"开关会记在 `%LOCALAPPDATA%\RustShot\config.txt`。同名文件自动追加 `_1` / `_2` 后缀，不会覆盖。
 诊断日志：`%LOCALAPPDATA%\RustShot\rustshot.log`（仅记录启动、异常与 panic）。
 
 ## 从源码构建
@@ -75,6 +68,12 @@ cargo build --release
 
 需要 MSVC 工具链（`rustup default stable-msvc`）。
 
+## 测试
+
+```powershell
+cargo test      # 22 项：箭头几何、序号对比色、选区夹取、控制点命中、配置读写、六种标注导出绘制
+```
+
 ## 设计要点
 
 | 关注点 | 做法 |
@@ -85,8 +84,7 @@ cargo build --release
 | 坐标 | 标注几何统一存"帧内物理像素"，预览时除以 `物理宽/窗口宽` 映射到 point，导出时直接用，做到预览与导出像素级对齐 |
 | 标注预览 | egui `Painter`（矩形/箭头/画笔/马赛克块），文字用 egui 的 `TextEdit` 以获得输入法支持 |
 | 导出合成 | `tiny-skia` 画矢量（抗锯齿），`fontdue` 用系统微软雅黑栅格化文字，合成进裁剪后的 RGBA |
-| 贴图窗口 | 独立 Win32 `WS_POPUP` 置顶窗口 + `StretchDIBits`，原生拖动/滚轮缩放，不占任务栏 |
-| 热键 / 托盘 / 单实例 | 单独线程跑隐藏消息窗口：`RegisterHotKey`、单实例互斥体 + 注册消息转发、贴图窗口宿主 |
+| 热键 / 托盘 / 单实例 | 单独线程跑隐藏消息窗口：`RegisterHotKey`、单实例互斥体 + 注册消息转发 |
 | 主面板 | eframe/egui；`logic()` 负责事件（窗口隐藏时也执行），`ui()` 负责绘制与覆盖层视口 |
 
 ## 已知限制
@@ -101,11 +99,12 @@ cargo build --release
 ```
 src/
   main.rs     命令行、单实例转发、自检
-  app.rs      主面板 UI、托盘菜单、剪贴板/保存/贴图分发
+  app.rs      主面板 UI、托盘菜单、剪贴板 / 保存分发
   overlay.rs  冻结覆盖层：选区交互、标注绘制、工具栏
   shapes.rs   标注数据模型、egui 预览、tiny-skia/fontdue 导出合成
   capture.rs  GDI 截屏、显示器/窗口几何
-  worker.rs   热键线程、单实例 IPC、贴图窗口
+  worker.rs   热键线程、单实例 IPC
+  config.rs   设置读写（保存目录/自动保存）、同名文件避让
   fonts.rs    系统中文字体加载（egui + fontdue 共用）
   win.rs      窗口定位（物理像素）
   util.rs     时间戳、日志

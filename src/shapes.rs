@@ -49,8 +49,10 @@ fn arrow_parts(a: Px, b: Px, w: f32) -> (Px, Px, [Px; 3]) {
     let dy = b.1 - a.1;
     let len = (dx * dx + dy * dy).sqrt().max(0.001);
     let (ux, uy) = (dx / len, dy / len);
-    let head_len = (w * 4.0).clamp(14.0, len * 0.6);
-    let head_w = (w * 3.0).clamp(10.0, head_len * 0.85);
+    // `.clamp(min, max)` panics when min > max, which happens for very short
+    // arrows; min/max chains stay monotone and safe for every length.
+    let head_len = (w * 4.0).min(len * 0.6).max(1.0);
+    let head_w = (w * 3.0).min(head_len * 0.9).max(1.0);
     let tip = b;
     let base = (b.0 - ux * head_len, b.1 - uy * head_len);
     let (px, py) = (-uy, ux);
@@ -68,10 +70,12 @@ fn arrow_parts(a: Px, b: Px, w: f32) -> (Px, Px, [Px; 3]) {
 // ---------------------------------------------------------------------------
 
 /// Paint shapes that are stored in frame pixels onto an egui painter whose
-/// points-per-pixel scale is `ratio` (physical pixels / points).
-pub fn paint(painter: &egui::Painter, shape: &Shape, ratio: f32, origin: egui::Pos2) {
-    let tp = |p: Px| egui::pos2(origin.x + p.0 / ratio, origin.y + p.1 / ratio);
-    let s = |w: f32| (w / ratio).max(0.6);
+/// points-per-pixel scale is (`rx`, `ry`) in physical pixels per point.
+pub fn paint(painter: &egui::Painter, shape: &Shape, rx: f32, ry: f32, origin: egui::Pos2) {
+    let tp = |p: Px| egui::pos2(origin.x + p.0 / rx, origin.y + p.1 / ry);
+    // Stroke widths / font sizes use the average scale: they are isotropic.
+    let avg = ((rx + ry) * 0.5).max(0.01);
+    let s = |w: f32| (w / avg).max(0.6);
     match shape {
         Shape::Rect { a, b, color, w } => {
             let r = egui::Rect::from_two_pos(tp(*a), tp(*b));
@@ -116,7 +120,7 @@ pub fn paint(painter: &egui::Painter, shape: &Shape, ratio: f32, origin: egui::P
                 tp(*pos),
                 egui::Align2::LEFT_TOP,
                 text,
-                egui::FontId::proportional(size / ratio),
+                egui::FontId::proportional(size / avg),
                 *color,
             );
         }
@@ -132,7 +136,7 @@ pub fn paint(painter: &egui::Painter, shape: &Shape, ratio: f32, origin: egui::P
                 egui::Align2::CENTER_CENTER,
                 n.to_string(),
                 egui::FontId::proportional(1.35 * s(*r)),
-                egui::Color32::WHITE,
+                badge_text_color(*color),
             );
         }
     }
@@ -141,6 +145,16 @@ pub fn paint(painter: &egui::Painter, shape: &Shape, ratio: f32, origin: egui::P
 // ---------------------------------------------------------------------------
 // Export (tiny-skia + fontdue)
 // ---------------------------------------------------------------------------
+
+/// Badge digits must stay readable on every palette colour.
+pub fn badge_text_color(c: Col) -> Col {
+    let lum = 0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32;
+    if lum > 150.0 {
+        egui::Color32::from_rgb(24, 24, 26)
+    } else {
+        egui::Color32::WHITE
+    }
+}
 
 fn sk_color(c: Col) -> tiny_skia::Color {
     tiny_skia::Color::from_rgba8(c.r(), c.g(), c.b(), c.a())
@@ -357,7 +371,7 @@ pub fn render(frame: &Frame, sel: PhysRect, shapes: &[Shape]) -> image::RgbaImag
                         center.1 - offset.1 - th * 0.5,
                     ),
                     &label,
-                    egui::Color32::WHITE,
+                    badge_text_color(*color),
                     size,
                     size * 3.0,
                 );
@@ -451,4 +465,211 @@ pub fn text_size(text: &str, size: f32) -> (f32, f32) {
         width += font.metrics(ch, size).advance_width;
     }
     (width, font.metrics('0', size).height as f32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arrow_head_scales_with_width_but_stays_inside() {
+        // A very short arrow must not get a head longer than the arrow itself.
+        let (line_end, _, tri) = arrow_parts((0.0, 0.0), (10.0, 0.0), 7.0);
+        assert!(line_end.0 <= 10.0);
+        assert!(tri[0].0 <= 10.0 + 0.001);
+    }
+
+    #[test]
+    fn horizontal_arrow_points_right() {
+        let (_, base, tri) = arrow_parts((0.0, 0.0), (100.0, 0.0), 4.0);
+        assert!(base.0 > 0.0 && base.0 < 100.0);
+        assert_eq!(tri[0], (100.0, 0.0));
+        // Head is symmetric around the shaft.
+        assert!((tri[1].1 + tri[2].1).abs() < 0.001);
+    }
+
+    #[test]
+    fn badge_digits_contrast_with_background() {
+        let white = egui::Color32::from_rgb(250, 250, 250);
+        let black = egui::Color32::from_rgb(24, 24, 26);
+        assert_eq!(badge_text_color(white), black);
+        assert_eq!(badge_text_color(black), egui::Color32::WHITE);
+        assert_eq!(
+            badge_text_color(egui::Color32::from_rgb(232, 69, 60)),
+            egui::Color32::WHITE
+        );
+    }
+
+    #[test]
+    fn short_arrow_is_still_rasterized() {
+        // Regression: a 12px arrow used to panic inside f32::clamp(min > max).
+        let frame = Frame {
+            w: 200,
+            h: 120,
+            rgba: vec![255u8; 200 * 120 * 4],
+            origin: crate::capture::PhysRect::new(0, 0, 200, 120),
+        };
+        let arrow = Shape::Arrow {
+            a: (20.0, 60.0),
+            b: (32.0, 66.0),
+            color: egui::Color32::from_rgb(232, 69, 60),
+            w: 4.0,
+        };
+        let img = render(
+            &frame,
+            crate::capture::PhysRect::new(0, 0, 120, 120),
+            &[arrow],
+        );
+        let red = img
+            .pixels()
+            .filter(|p| p[0] > 150 && p[1] < 130 && p[2] < 130)
+            .count();
+        assert!(red > 10, "expected arrow pixels, found {red}");
+    }
+
+    #[test]
+    fn zero_sized_selection_renders_one_pixel() {
+        let frame = Frame {
+            w: 4,
+            h: 4,
+            rgba: vec![255u8; 4 * 4 * 4],
+            origin: crate::capture::PhysRect::new(0, 0, 4, 4),
+        };
+        let img = render(&frame, crate::capture::PhysRect::new(3, 3, 0, 0), &[]);
+        assert_eq!((img.width(), img.height()), (1, 1));
+    }
+
+    // -----------------------------------------------------------------
+    // one test per tool: every annotation must reach the exported pixels
+    // -----------------------------------------------------------------
+
+    fn white_frame(w: u32, h: u32) -> Frame {
+        Frame {
+            w,
+            h,
+            rgba: vec![255u8; (w * h * 4) as usize],
+            origin: crate::capture::PhysRect::new(0, 0, w as i32, h as i32),
+        }
+    }
+
+    fn count(img: &image::RgbaImage, f: impl Fn(&image::Rgba<u8>) -> bool) -> usize {
+        img.pixels().filter(|p| f(p)).count()
+    }
+
+    fn red(img: &image::RgbaImage) -> usize {
+        count(img, |p| p[0] > 150 && p[1] < 130 && p[2] < 130)
+    }
+
+    #[test]
+    fn rect_outline_is_baked() {
+        let frame = white_frame(200, 120);
+        let img = render(
+            &frame,
+            crate::capture::PhysRect::new(0, 0, 200, 120),
+            &[Shape::Rect {
+                a: (20.0, 20.0),
+                b: (120.0, 90.0),
+                color: egui::Color32::from_rgb(232, 69, 60),
+                w: 4.0,
+            }],
+        );
+        // Outline only: the middle stays white.
+        assert!(red(&img) > 300);
+        assert_eq!(img.get_pixel(70, 55), &image::Rgba([255, 255, 255, 255]));
+    }
+
+    #[test]
+    fn pen_stroke_is_baked() {
+        let frame = white_frame(200, 120);
+        let pts = (0..40)
+            .map(|i| (20.0 + i as f32 * 3.0, 60.0 + (i as f32 * 0.4).sin() * 20.0))
+            .collect::<Vec<_>>();
+        let img = render(
+            &frame,
+            crate::capture::PhysRect::new(0, 0, 200, 120),
+            &[Shape::Pen {
+                pts,
+                color: egui::Color32::from_rgb(232, 69, 60),
+                w: 5.0,
+            }],
+        );
+        assert!(red(&img) > 200);
+    }
+
+    #[test]
+    fn mosaic_blocks_are_baked() {
+        let frame = white_frame(200, 120);
+        let blocks = vec![
+            (10.0f32, 10.0f32, [10u8, 20, 30]),
+            (19.0, 10.0, [10, 20, 30]),
+            (28.0, 10.0, [10, 20, 30]),
+        ];
+        let img = render(
+            &frame,
+            crate::capture::PhysRect::new(0, 0, 200, 120),
+            &[Shape::Mosaic { cell: 9.0, blocks }],
+        );
+        assert_eq!(img.get_pixel(14, 14), &image::Rgba([10, 20, 30, 255]));
+        assert_eq!(img.get_pixel(150, 14), &image::Rgba([255, 255, 255, 255]));
+    }
+
+    #[test]
+    fn number_badge_is_baked_with_contrast_text() {
+        let frame = white_frame(160, 120);
+        let img = render(
+            &frame,
+            crate::capture::PhysRect::new(0, 0, 160, 120),
+            &[Shape::Number {
+                center: (80.0, 60.0),
+                n: 7,
+                color: egui::Color32::from_rgb(24, 24, 26),
+                r: 20.0,
+            }],
+        );
+        // Dark disc around the centre…
+        let c = img.get_pixel(62, 60);
+        assert!(c[0] < 80 && c[1] < 80 && c[2] < 80, "disc pixel {c:?}");
+        // …with a light glyph inside it (white text on a dark badge).
+        let light = count(&img, |p| p[0] > 200 && p[1] > 200 && p[2] > 200);
+        assert!(light > 20, "expected white digits, got {light}");
+    }
+
+    #[test]
+    fn text_is_baked_and_stays_inside_the_crop() {
+        let frame = white_frame(260, 120);
+        let img = render(
+            &frame,
+            crate::capture::PhysRect::new(0, 0, 260, 120),
+            &[Shape::Text {
+                pos: (10.0, 20.0),
+                text: "Hi 12".to_string(),
+                color: egui::Color32::from_rgb(232, 69, 60),
+                size: 40.0,
+            }],
+        );
+        assert!(red(&img) > 100, "text pixels: {}", red(&img));
+    }
+
+    #[test]
+    fn overlapping_shapes_keep_draw_order() {
+        let frame = white_frame(120, 80);
+        let img = render(
+            &frame,
+            crate::capture::PhysRect::new(0, 0, 120, 80),
+            &[
+                Shape::Rect {
+                    a: (10.0, 10.0),
+                    b: (110.0, 70.0),
+                    color: egui::Color32::from_rgb(232, 69, 60),
+                    w: 6.0,
+                },
+                Shape::Mosaic {
+                    cell: 9.0,
+                    blocks: vec![(10.0, 10.0, [0u8, 0, 0])],
+                },
+            ],
+        );
+        // The mosaic block is drawn after the rect, so it wins on that cell.
+        assert_eq!(img.get_pixel(14, 14), &image::Rgba([0, 0, 0, 255]));
+    }
 }

@@ -1,8 +1,9 @@
 //! A couple of Win32 window helpers used to place our own windows exactly.
 
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, IsIconic, IsWindowVisible, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
+    FindWindowW, GetWindowRect, IsIconic, IsWindowVisible, SWP_NOACTIVATE, SWP_NOZORDER,
+    SetWindowPos,
 };
 use windows::core::PCWSTR;
 
@@ -18,7 +19,7 @@ pub fn find_by_title(title: &str) -> Option<HWND> {
 /// Move/resize a window using device pixels, bypassing all DPI guesswork.
 pub fn force_rect(hwnd: HWND, r: PhysRect) -> bool {
     unsafe {
-        SetWindowPos(
+        let ok = SetWindowPos(
             hwnd,
             None,
             r.x,
@@ -27,7 +28,21 @@ pub fn force_rect(hwnd: HWND, r: PhysRect) -> bool {
             r.h,
             SWP_NOZORDER | SWP_NOACTIVATE,
         )
-        .is_ok()
+        .is_ok();
+        if ok {
+            let mut actual = RECT::default();
+            if GetWindowRect(hwnd, &mut actual).is_ok() {
+                let aw = actual.right - actual.left;
+                let ah = actual.bottom - actual.top;
+                if aw != r.w || ah != r.h || actual.left != r.x || actual.top != r.y {
+                    crate::util::log(&format!(
+                        "force_rect mismatch: want {}x{} at ({},{}), got {}x{} at ({},{})",
+                        r.w, r.h, r.x, r.y, aw, ah, actual.left, actual.top
+                    ));
+                }
+            }
+        }
+        ok
     }
 }
 

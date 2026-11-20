@@ -46,6 +46,9 @@ pub struct Frame {
 
 impl Frame {
     pub fn pixel(&self, x: i32, y: i32) -> [u8; 3] {
+        if self.w == 0 || self.h == 0 || self.rgba.len() < 4 {
+            return [0, 0, 0];
+        }
         let x = x.clamp(0, self.w as i32 - 1);
         let y = y.clamp(0, self.h as i32 - 1);
         let i = ((y as u32 * self.w + x as u32) * 4) as usize;

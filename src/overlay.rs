@@ -6,7 +6,11 @@ use std::sync::Arc;
 use crate::capture::{Frame, PhysRect};
 use crate::shapes::{self, Col, Px, Shape};
 
-pub const OVERLAY_TITLE: &str = "RustShot Overlay";
+/// Each capture gets its own window title so `FindWindowW` can never pick up
+/// the overlay of another instance (or the previous capture).
+pub fn overlay_title(serial: u64) -> String {
+    format!("RustShot Overlay {serial}")
+}
 
 pub const PALETTE: [Col; 6] = [
     egui::Color32::from_rgb(232, 69, 60),
@@ -70,13 +74,10 @@ impl Tool {
 pub enum Export {
     Copy,
     Save,
-    Pin,
 }
 
 pub struct Outcome {
     pub action: Export,
-    /// Screen position (virtual desktop pixels) the image came from.
-    pub origin: (i32, i32),
     pub image: image::RgbaImage,
 }
 
@@ -92,6 +93,8 @@ enum Drag {
 pub struct Session {
     pub frame: Arc<Frame>,
     pub monitor: PhysRect,
+    /// Exact window title of this overlay (unique per capture).
+    title: String,
     tex: Option<egui::TextureHandle>,
     /// Selection in frame-local device pixels.
     sel: Option<egui::Rect>,
@@ -107,8 +110,12 @@ pub struct Session {
     hover: Option<egui::Rect>,
     mosaic_seen: HashSet<(i32, i32)>,
     fix_tries: u32,
-    ratio: f32,
-    over_rects: Vec<egui::Rect>,
+    /// Physical pixels per point, per axis (a stretched window warps them).
+    rx: f32,
+    ry: f32,
+    /// Measured toolbar size from the previous frame (for clamping).
+    toolbar_w: f32,
+    toolbar_h: f32,
     pub outcome: Option<Outcome>,
     pub cancelled: bool,
 }
@@ -142,7 +149,13 @@ fn hit_handle(sel: egui::Rect, p: egui::Pos2, tol: f32) -> Option<usize> {
 }
 
 impl Session {
-    pub fn new(frame: Arc<Frame>, monitor: PhysRect, tool: Tool, hover: Option<PhysRect>) -> Self {
+    pub fn new(
+        frame: Arc<Frame>,
+        monitor: PhysRect,
+        title: String,
+        tool: Tool,
+        hover: Option<PhysRect>,
+    ) -> Self {
         let hover = hover.and_then(|h| {
             let r = egui::Rect::from_min_size(
                 egui::pos2((h.x - frame.origin.x) as f32, (h.y - frame.origin.y) as f32),
@@ -162,6 +175,7 @@ impl Session {
         Self {
             frame,
             monitor,
+            title,
             tex: None,
             sel: None,
             anchor: None,
@@ -176,8 +190,10 @@ impl Session {
             hover,
             mosaic_seen: HashSet::new(),
             fix_tries: 0,
-            ratio: 1.0,
-            over_rects: Vec::new(),
+            rx: 1.0,
+            ry: 1.0,
+            toolbar_w: 620.0,
+            toolbar_h: 44.0,
             outcome: None,
             cancelled: false,
         }
@@ -198,14 +214,17 @@ impl Session {
         let screen = ctx.viewport_rect();
         if self.fix_tries == 0 {
             crate::util::log(&format!(
-                "overlay frame0 screen={screen:?} frame={}x{} monitor={:?}",
-                self.frame.w, self.frame.h, self.monitor
+                "overlay frame0 ppp={:.4} screen={screen:?} frame={}x{} monitor={:?}",
+                ctx.pixels_per_point(),
+                self.frame.w,
+                self.frame.h,
+                self.monitor
             ));
         }
 
         // Pin the OS window to the monitor using device pixels, no DPI math.
         if self.fix_tries < 8 {
-            let ok = crate::win::force_rect_by_title(OVERLAY_TITLE, self.monitor);
+            let ok = crate::win::force_rect_by_title(&self.title, self.monitor);
             self.fix_tries += 1;
             if ok && self.fix_tries > 2 {
                 crate::util::log("overlay geometry pinned");
@@ -222,8 +241,9 @@ impl Session {
             return;
         }
 
-        self.ratio = self.frame.w as f32 / screen.width();
-        let ratio = self.ratio;
+        self.rx = self.frame.w as f32 / screen.width();
+        self.ry = self.frame.h as f32 / screen.height();
+        let (rx, ry) = (self.rx, self.ry);
         let origin = screen.min;
 
         if self.tex.is_none() {
@@ -244,9 +264,8 @@ impl Session {
             );
         }
 
-        let to_p = |p: egui::Pos2| egui::pos2(origin.x + p.x / ratio, origin.y + p.y / ratio);
-        let to_phys =
-            |p: egui::Pos2| egui::pos2((p.x - origin.x) * ratio, (p.y - origin.y) * ratio);
+        let to_p = |p: egui::Pos2| egui::pos2(origin.x + p.x / rx, origin.y + p.y / ry);
+        let to_phys = |p: egui::Pos2| egui::pos2((p.x - origin.x) * rx, (p.y - origin.y) * ry);
 
         // ---- dim everything outside the selection ----
         let dim = egui::Color32::from_black_alpha(96);
@@ -309,7 +328,7 @@ impl Session {
             let clip = egui::Rect::from_min_max(to_p(sel.min), to_p(sel.max));
             let sp = painter.with_clip_rect(clip);
             for s in &self.shapes {
-                shapes::paint(&sp, s, ratio, origin);
+                shapes::paint(&sp, s, rx, ry, origin);
             }
         }
 
@@ -386,16 +405,11 @@ impl Session {
             .sel
             .map(|s| egui::Rect::from_min_max(to_p(s.min), to_p(s.max)));
         let mut over = self.show_toolbar(&ctx, screen, sel_pts);
-        over.extend(self.show_text_editor(&ctx, ratio));
+        over.extend(self.show_text_editor(&ctx, rx, ry));
 
         // ---- input ----
-        let (pressed, down, released) = ctx.input(|i| {
-            (
-                i.pointer.primary_pressed(),
-                i.pointer.primary_down(),
-                i.pointer.primary_released(),
-            )
-        });
+        let (pressed, released) =
+            ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_released()));
         let ptr = ctx.input(|i| i.pointer.interact_pos());
         let over_ui = ptr.is_some_and(|p| over.iter().any(|r| r.contains(p)));
 
@@ -405,15 +419,17 @@ impl Session {
         {
             self.on_press(to_phys(p));
         }
-        if down
-            && !over_ui
-            && self.drag != Drag::None
-            && let Some(p) = ptr
-        {
-            self.on_drag(to_phys(p));
-        }
-        if released {
-            self.on_release();
+        // A started drag owns the pointer: keep feeding it even when the cursor
+        // wanders over the floating toolbar, otherwise the selection freezes as
+        // soon as it crosses the toolbar (the toolbar sits right under it) and
+        // ends up smaller than what the user dragged.
+        if self.drag != Drag::None {
+            if let Some(p) = ptr {
+                self.on_drag(to_phys(p));
+            }
+            if released {
+                self.on_release();
+            }
         }
 
         // cursor feedback
@@ -441,7 +457,6 @@ impl Session {
         }
 
         self.keys(&ctx);
-        self.over_rects = over;
 
         if ctx.input(|i| i.pointer.secondary_clicked()) && !over_ui {
             if self.text_idx.is_some() {
@@ -500,6 +515,11 @@ impl Session {
                 }
                 return;
             }
+        }
+        // Annotation tools only work inside the selection; keep it intact
+        // instead of silently starting a new one.
+        if self.sel.is_some() && self.tool != Tool::Select {
+            return;
         }
         let p = egui::pos2(
             p.x.clamp(0.0, self.frame.w as f32),
@@ -736,8 +756,7 @@ impl Session {
         self.mosaic_seen.clear();
         let remove = match self.shapes.last() {
             Some(Shape::Rect { a, b, .. }) | Some(Shape::Arrow { a, b, .. }) => {
-                ((a.0 - b.0).abs() < 4.0 && (a.1 - b.1).abs() < 4.0)
-                    || ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt() < 8.0
+                ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt() < 6.0
             }
             Some(Shape::Pen { pts, .. }) => pts.is_empty(),
             Some(Shape::Mosaic { blocks, .. }) => blocks.is_empty(),
@@ -784,25 +803,34 @@ impl Session {
     // -----------------------------------------------------------------
     // toolbar / text editor areas
     // -----------------------------------------------------------------
-    fn show_text_editor(&mut self, ctx: &egui::Context, ratio: f32) -> Vec<egui::Rect> {
+    fn show_text_editor(&mut self, ctx: &egui::Context, rx: f32, ry: f32) -> Vec<egui::Rect> {
         let Some(idx) = self.text_idx else {
             return Vec::new();
         };
         let screen = ctx.viewport_rect();
         let (pos, _) = match self.shapes.get(idx) {
             Some(Shape::Text { pos, size, .. }) => (
-                egui::pos2(screen.min.x + pos.0 / ratio, screen.min.y + pos.1 / ratio),
+                egui::pos2(screen.min.x + pos.0 / rx, screen.min.y + pos.1 / ry),
                 *size,
             ),
             _ => return Vec::new(),
         };
+
+        let at = egui::pos2(
+            (pos.x - 4.0)
+                .min(screen.right() - 244.0)
+                .max(screen.left() + 4.0),
+            (pos.y - 4.0)
+                .min(screen.bottom() - 48.0)
+                .max(screen.top() + 4.0),
+        );
 
         let mut rects = Vec::new();
         let want_focus = !self.text_focus_done;
         let shapes = &mut self.shapes;
         let area = egui::Area::new(egui::Id::unique("rustshot_text_editor"))
             .order(egui::Order::Foreground)
-            .fixed_pos(pos - egui::vec2(4.0, 4.0))
+            .fixed_pos(at)
             .show(ctx, |ui| {
                 egui::Frame::NONE
                     .fill(egui::Color32::from_black_alpha(90))
@@ -819,7 +847,7 @@ impl Session {
                         {
                             let te = ui.add(
                                 egui::TextEdit::multiline(text)
-                                    .font(egui::FontId::proportional(*size / ratio))
+                                    .font(egui::FontId::proportional(*size / ((rx + ry) * 0.5)))
                                     .text_color(*color)
                                     .desired_width(220.0)
                                     .desired_rows(1)
@@ -844,17 +872,19 @@ impl Session {
         screen: egui::Rect,
         sel_pts: Option<egui::Rect>,
     ) -> Vec<egui::Rect> {
-        let width_guess = 620.0;
+        let width = self.toolbar_w.max(120.0);
         let x = match sel_pts {
-            Some(r) => (r.center().x - width_guess * 0.5)
-                .clamp(8.0, (screen.right() - width_guess - 8.0).max(8.0)),
-            None => screen.center().x - width_guess * 0.5,
+            Some(r) => {
+                (r.center().x - width * 0.5).clamp(8.0, (screen.right() - width - 8.0).max(8.0))
+            }
+            None => (screen.center().x - width * 0.5).max(8.0),
         };
+        let h = self.toolbar_h.max(36.0);
         let y = match sel_pts {
-            Some(r) if r.bottom() + 62.0 < screen.bottom() => r.bottom() + 10.0,
-            Some(r) if r.top() - 58.0 > screen.top() => r.top() - 54.0,
-            Some(_) => screen.bottom() - 56.0,
-            None => screen.bottom() - 56.0,
+            Some(r) if r.bottom() + h + 18.0 < screen.bottom() => r.bottom() + 10.0,
+            Some(r) if r.top() - h - 14.0 > screen.top() => r.top() - h - 10.0,
+            Some(_) => (screen.bottom() - h - 12.0).max(screen.top() + 4.0),
+            None => (screen.bottom() - h - 12.0).max(screen.top() + 4.0),
         };
 
         let mut export: Option<Export> = None;
@@ -947,9 +977,6 @@ impl Session {
                             if ui.button("保存").clicked() {
                                 export = Some(Export::Save);
                             }
-                            if ui.button("贴图").clicked() {
-                                export = Some(Export::Pin);
-                            }
                             if ui.button("取消").clicked() {
                                 cancel = true;
                             }
@@ -967,6 +994,8 @@ impl Session {
             self.cancelled = true;
         }
 
+        self.toolbar_w = area.response.rect.width();
+        self.toolbar_h = area.response.rect.height();
         vec![area.response.rect.expand(4.0)]
     }
 
@@ -1012,9 +1041,6 @@ impl Session {
             if ctx.input(|i| i.key_pressed(egui::Key::S)) {
                 self.export(Export::Save);
             }
-            if ctx.input(|i| i.key_pressed(egui::Key::T)) {
-                self.export(Export::Pin);
-            }
             if ctx.input(|i| i.key_pressed(egui::Key::A)) {
                 self.sel = Some(self.bounds());
             }
@@ -1041,10 +1067,57 @@ impl Session {
             sel.height().round().max(1.0) as i32,
         );
         let img = shapes::render(&self.frame, rect, &self.shapes);
-        self.outcome = Some(Outcome {
-            action,
-            origin: (self.frame.origin.x + rect.x, self.frame.origin.y + rect.y),
-            image: img,
-        });
+        self.outcome = Some(Outcome { action, image: img });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_rect_keeps_size_inside_bounds() {
+        let bounds = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(100.0, 80.0));
+        let r = egui::Rect::from_min_size(egui::pos2(-20.0, -10.0), egui::vec2(30.0, 30.0));
+        let c = clamp_rect_to(r, bounds);
+        assert_eq!(c.min, egui::pos2(0.0, 0.0));
+        assert_eq!(c.size(), egui::vec2(30.0, 30.0));
+    }
+
+    #[test]
+    fn clamp_rect_never_exceeds_bounds() {
+        let bounds = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(100.0, 80.0));
+        let r = egui::Rect::from_min_size(egui::pos2(90.0, 70.0), egui::vec2(50.0, 50.0));
+        let c = clamp_rect_to(r, bounds);
+        assert!(c.max.x <= 100.0 && c.max.y <= 80.0, "{c:?}");
+        assert_eq!(c.size(), egui::vec2(50.0, 50.0));
+    }
+
+    #[test]
+    fn hit_handle_finds_all_eight_handles() {
+        let sel = egui::Rect::from_min_size(egui::pos2(100.0, 100.0), egui::vec2(200.0, 100.0));
+        let c = sel.center();
+        let expected = [
+            sel.left_top(),
+            egui::pos2(c.x, sel.top()),
+            sel.right_top(),
+            egui::pos2(sel.right(), c.y),
+            sel.right_bottom(),
+            egui::pos2(c.x, sel.bottom()),
+            sel.left_bottom(),
+            egui::pos2(sel.left(), c.y),
+        ];
+        for (i, p) in expected.iter().enumerate() {
+            assert_eq!(hit_handle(sel, *p, 11.0), Some(i), "handle {i}");
+        }
+        assert_eq!(hit_handle(sel, c, 11.0), None);
+    }
+
+    #[test]
+    fn tool_labels_are_unique() {
+        let mut labels: Vec<_> = Tool::all().iter().map(|t| t.label()).collect();
+        labels.sort_unstable();
+        labels.dedup();
+        assert_eq!(labels.len(), Tool::all().len());
     }
 }
