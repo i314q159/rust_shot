@@ -1,111 +1,214 @@
 # RustShot
 
-一个用 Rust 写的 Windows 轻量级截图工具，参照 Snipaste / SnowShot 的交互习惯：
-**冻结屏幕 → 框选 → 标注 → 复制 / 保存**，常驻托盘、全局热键随时唤起。
+**7 MB 的 Windows 截图 / 标注工具：`F1` 冻结屏幕、拖选、加几笔、回车即复制。**
+单文件、无安装、无运行库依赖，配置跟着 exe 走。
 
-## 功能
+> RustShot is a tiny screenshot & annotation tool for Windows. No installer, no runtime, no telemetry — one 7 MB exe you can drop on a USB stick.
 
-**截图**
-- 区域截图：拖动框选，四角/四边可再调整，支持拖动移动选区
-- 窗口截图：不拖动直接单击，自动拾取光标下的窗口（DWM 真实边框，不含阴影）
-- 全屏截图：一键整屏到剪贴板
-- 多显示器 / 高 DPI：Per-Monitor V2，按光标所在显示器冻结，1:1 像素还原
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/i314q159/rust_shot)
+[![Rust](https://img.shields.io/badge/rust-edition%202024-CE412B?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE-MIT.md)
+[![Size](https://img.shields.io/badge/exe-7.2%20MB-lightgrey?style=flat-square)](#下载)
+[![Runtime](https://img.shields.io/badge/runtime-none-success?style=flat-square)](#下载)
+[![Offline](https://img.shields.io/badge/network-not%20required-success?style=flat-square)](#已知限制)
 
-**标注**（快捷键 `1`–`7`）
+<p align="center">
+  <img src="assets/screenshot-panel.png" width="300" alt="RustShot 主面板">
+  <img src="assets/screenshot-overlay.png" width="420" alt="框选与标注工具栏">
+</p>
+
+<p align="center"><sub>左：主面板（托盘常驻、保存目录、快捷键提示）　右：框选后的暗化遮罩与工具栏（尺寸提示、线宽、颜色、撤销 / 复制 / 保存）</sub></p>
+
+---
+
+## 目录
+
+- [特性](#特性)
+- [工作流](#工作流)
+- [快捷键](#快捷键)
+- [下载](#下载)
+- [命令行](#命令行)
+- [配置](#配置)
+- [从源码构建](#从源码构建)
+- [实现要点](#实现要点)
+- [项目结构](#项目结构)
+- [已知限制 / FAQ](#已知限制--faq)
+- [许可证](#许可证)
+
+---
+
+## 特性
+
+**截图** — `F1` 拖选，松手后仍可拖四角 / 四边微调或整体移动；不拖动直接单击则拾取光标下的窗口（DWM 真实边框，不含阴影）；`F2` 整屏直送剪贴板。Per-Monitor V2，多显示器 / 高 DPI 下按光标所在屏幕冻结，1:1 物理像素。
+
+**标注** — 快捷键 `1`–`7` 切工具，预览和导出共用同一套几何，所见即所得。
+
 | 键 | 工具 | 说明 |
 | --- | --- | --- |
-| 1 | 选择 | 移动 / 缩放选区 |
-| 2 | 矩形 | 描边矩形 |
-| 3 | 箭头 | 带实心箭头 |
-| 4 | 画笔 | 自由手绘，圆头 |
-| 5 | 文字 | 就地编辑，支持中文（IME） |
-| 6 | 马赛克 | 笔刷打码，按局部平均色像素化 |
-| 7 | 序号 | 自动递增的圆形编号 |
+| `1` | 选择 | 移动 / 缩放选区 |
+| `2` | 矩形 | 描边矩形 |
+| `3` | 箭头 | 带实心箭头的直线 |
+| `4` | 画笔 | 自由手绘，圆头笔迹 |
+| `5` | 文字 | 就地编辑，支持中文输入法 |
+| `6` | 马赛克 | 按局部平均色像素化，笔刷打码 |
+| `7` | 序号 | 自动递增的圆形编号 |
 
-另有 3 档线宽、6 种颜色、撤销（`Ctrl+Z`）。
+3 档线宽、6 种颜色、`Ctrl+Z` 逐笔撤销。
 
-**输出**
-- `Enter` / `Ctrl+C`：复制到剪贴板（可选同时自动存 PNG）
-- `Ctrl+S`：另存为（PNG）
-- `Ctrl+A`：全选整屏；`Esc` / 右键：取消
+**输出** — `Enter` / `Ctrl+C` 复制到剪贴板（可选同时存 PNG）；`Ctrl+S` 另存为，同名文件自动追加 `_1` / `_2` 不覆盖；`Esc` / 右键取消。
 
-**常驻**
-- 关闭主面板（点 ×）默认**最小化到托盘**，不退出
-- 托盘左键单击直接截图，右键菜单：区域截图 / 全屏截图 / 显示主面板 / 退出
-- 单实例：重复启动会把请求转给已运行的实例
+**常驻** — 点 × 默认最小化到托盘；托盘左键直接截图，右键菜单切换区域 / 全屏 / 主面板 / 退出；单实例，重复启动会把请求转给已运行的实例。
 
-## 全局热键
+**为什么不用 Snipaste / 系统截图**
+
+| | RustShot | 系统截图 | Snipaste |
+| --- | --- | --- | --- |
+| 体积 | 单文件 7.2 MB | 内置 | 安装包 + 依赖 |
+| 标注 | 6 种 + 序号 + 马赛克 | 基础画笔 | 齐全（含贴图、取色） |
+| 便携配置 | `config.txt` 跟 exe 走 | — | 部分可配 |
+| 贴图 / OCR / 滚动长截图 | 不做 | 不做 | 贴图有，OCR 无 |
+
+取舍很明确：只把「冻结 → 圈选 → 标注 → 交付」这一条路做到没有多余步骤。
+
+## 工作流
+
+```
+        F1                    拖选 / 点选                       1-7
+  ┌───────────┐   ┌──────────────────────────┐   ┌────────────────────┐
+  │ 冻结屏幕  │ → │ 选区（可再调整）+ 工具栏 │ → │ 矩形/箭头/文字/… │
+  └───────────┘   └──────────────────────────┘   └─────────┬──────────┘
+                                                            │
+                              ┌─────────────────────────────┴───────────────┐
+                              │  Enter 复制   ·   Ctrl+S 另存为   ·   Esc 取消 │
+                              └──────────────────────────────────────────────┘
+```
+
+按下 `F1` 的瞬间屏幕已被冻结（GDI `BitBlt` + `CAPTUREBLT`）：背后的窗口继续滚动、视频继续播放，你圈到的仍是那一帧。
+
+## 快捷键
 
 | 热键 | 动作 |
 | --- | --- |
 | `F1` | 区域截图 |
 | `F2` | 全屏截图到剪贴板 |
-| `Ctrl+Alt+S` | 区域截图（备用，避免 F1 被其它软件占用） |
+| `Ctrl+Alt+S` | 区域截图（备用，避免 `F1` 被其它软件占用） |
 | `Ctrl+Alt+Q` | 退出 |
 
-## 运行
+截图过程中：`1`–`7` 切工具、`Ctrl+Z` 撤销、`Ctrl+A` 全选、`Enter` / `Ctrl+C` 复制、`Ctrl+S` 保存、`Esc` / 右键取消。
 
-直接运行 `rust_shot.exe`（无需安装、无运行库依赖）。
+## 下载
 
-命令行参数：
+到 [Releases](https://github.com/i314q159/rust_shot/releases) 下载 `rust_shot.exe`，双击即用。
 
-```
+1. 首次启动会在 **exe 同目录**生成 `config.txt`（便携配置）；
+2. 放在 `Program Files` 等只读目录时，配置自动回退到 `%LOCALAPPDATA%\RustShot\`；
+3. 想换默认保存位置：面板里点 `更改`，或直接编辑 `config.txt`。
+
+空闲时约 65 MB 私有内存（工作集约 100 MB），无后台服务、无联网。
+
+## 命令行
+
+```powershell
 rust_shot.exe                 启动主面板
 rust_shot.exe --capture, -c   立即区域截图（已有实例则转发给它）
 rust_shot.exe --full, -f      立即全屏截图到剪贴板
-rust_shot.exe --selftest a.png  离屏渲染一张测试图（校核导出管线，不开窗口）
+rust_shot.exe --selftest a.png  离屏渲染一张测试图并退出（校核导出管线）
+rust_shot.exe --help, -h      用法说明
 ```
 
-截图默认保存在 `%USERPROFILE%\Pictures\RustShot`，可在面板里更改；保存目录和"自动保存"开关会记在 `%LOCALAPPDATA%\RustShot\config.txt`。同名文件自动追加 `_1` / `_2` 后缀，不会覆盖。
-诊断日志：`%LOCALAPPDATA%\RustShot\rustshot.log`（仅记录启动、异常与 panic）。
+## 配置
+
+设置写在**程序同目录的 `config.txt`**，两行键值对，用记事本就能改：
+
+```ini
+# RustShot 配置（保存后重启生效；save_dir 支持 %USERPROFILE% 这类环境变量）
+save_dir=%USERPROFILE%\Pictures\RustShot
+auto_save=true
+```
+
+| 键 | 说明 |
+| --- | --- |
+| `save_dir` | 保存目录，支持 `%USERPROFILE%`、`%TEMP%` 等环境变量 |
+| `auto_save` | 复制到剪贴板时是否同时存 PNG（`true` / `false`） |
+
+面板上的 `更改` / `重置` 会立刻写回配置文件；旧版本存放在 `%LOCALAPPDATA%\RustShot\config.txt` 的设置，首次启动时自动迁移。
+
+诊断日志：`%LOCALAPPDATA%\RustShot\rustshot.log`（只记启动、异常和 panic）。
 
 ## 从源码构建
 
 ```powershell
+git clone https://github.com/i314q159/rust_shot.git
+cd rust_shot
 cargo build --release
 # 产物：target\release\rust_shot.exe
 ```
 
-需要 MSVC 工具链（`rustup default stable-msvc`）。
+需要 MSVC 工具链（`rustup default stable-msvc`）。构建时 `build.rs` 会把 `assets/icon/rustshot.ico` 写进 exe 资源；机器上没有 `rc.exe` 只告警、不中断。
 
-## 测试
+### 测试
 
 ```powershell
-cargo test      # 22 项：箭头几何、序号对比色、选区夹取、控制点命中、配置读写、六种标注导出绘制
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test          # 25 项：箭头几何、序号对比色、选区夹取、控制点命中、配置读写/环境变量、六种标注导出绘制
 ```
 
-## 设计要点
+## 实现要点
 
 | 关注点 | 做法 |
 | --- | --- |
-| 屏幕采集 | GDI `BitBlt` + `CAPTUREBLT`（含分层窗口），`GetDIBits` 取 BGRA，转 RGBA |
-| DPI | 进程 `Per-Monitor V2`，所有坐标都是物理像素；覆盖层窗口用 `SetWindowPos` 按物理像素钉住显示器，规避 winit 逻辑坐标换算 |
-| 覆盖层 | 冻结图作为背景纹理铺满窗口，选区外做暗化遮罩，所以不需要真透明窗口 |
-| 坐标 | 标注几何统一存"帧内物理像素"，预览时除以 `物理宽/窗口宽` 映射到 point，导出时直接用，做到预览与导出像素级对齐 |
-| 标注预览 | egui `Painter`（矩形/箭头/画笔/马赛克块），文字用 egui 的 `TextEdit` 以获得输入法支持 |
-| 导出合成 | `tiny-skia` 画矢量（抗锯齿），`fontdue` 用系统微软雅黑栅格化文字，合成进裁剪后的 RGBA |
-| 热键 / 托盘 / 单实例 | 单独线程跑隐藏消息窗口：`RegisterHotKey`、单实例互斥体 + 注册消息转发 |
+| 屏幕采集 | GDI `BitBlt` + `CAPTUREBLT`（含分层窗口），`GetDIBits` 取 BGRA 转 RGBA |
+| DPI | 进程 Per-Monitor V2，全程物理像素；覆盖层用 `SetWindowPos` 按物理像素钉住显示器 |
+| 覆盖层 | 冻结图作为背景纹理铺满窗口 + 选区外暗化遮罩，无需真透明窗口 |
+| 坐标 | 标注几何统一存"帧内物理像素"，预览除缩放、导出直接用，做到像素级对齐 |
+| 标注预览 | egui `Painter` 画矩形/箭头/画笔/马赛克块，文字用 `TextEdit` 以支持输入法 |
+| 导出合成 | `tiny-skia` 画矢量（抗锯齿），`fontdue` 栅格化文字，合成进裁剪后的 RGBA |
+| 热键 / 托盘 / 单实例 | 独立线程跑隐藏消息窗口：`RegisterHotKey`、互斥体单实例、托盘菜单事件入队后唤醒 UI |
+| 字体 | 不打包字体：按固定顺序查找系统字体（微软雅黑 → 黑体 → 宋体 → Segoe UI），界面与导出共用同一套字形 |
 | 主面板 | eframe/egui；`logic()` 负责事件（窗口隐藏时也执行），`ui()` 负责绘制与覆盖层视口 |
+| 图标 | `assets/icon/` 下多尺寸 PNG/ICO，窗口与托盘内嵌 PNG，`build.rs` 把 ICO 写进 exe 资源 |
 
-## 已知限制
-
-- 只支持 Windows（Win32 API 强依赖）
-- 未做滚动长截图、取色器、OCR
-- 覆盖层依赖主面板窗口处于"非最小化"状态（eframe 限制），从托盘唤起时会先恢复面板一帧，截图结束后自动退回托盘
-- 抓取受保护内容（部分带 DRM 的播放器）时可能得到黑图
-
-## 目录结构
+## 项目结构
 
 ```
-src/
-  main.rs     命令行、单实例转发、自检
-  app.rs      主面板 UI、托盘菜单、剪贴板 / 保存分发
-  overlay.rs  冻结覆盖层：选区交互、标注绘制、工具栏
-  shapes.rs   标注数据模型、egui 预览、tiny-skia/fontdue 导出合成
-  capture.rs  GDI 截屏、显示器/窗口几何
-  worker.rs   热键线程、单实例 IPC
-  config.rs   设置读写（保存目录/自动保存）、同名文件避让
-  fonts.rs    系统中文字体加载（egui + fontdue 共用）
-  win.rs      窗口定位（物理像素）
-  util.rs     时间戳、日志
+rust_shot/
+├─ src/
+│  ├─ main.rs      命令行、单实例转发、自检
+│  ├─ app.rs       主面板 UI、菜单栏、托盘、剪贴板 / 保存分发
+│  ├─ overlay.rs   冻结覆盖层：选区交互、标注绘制、工具栏
+│  ├─ shapes.rs    标注数据模型、egui 预览、tiny-skia/fontdue 导出合成
+│  ├─ capture.rs   GDI 截屏、显示器 / 窗口几何
+│  ├─ worker.rs    热键线程、单实例 IPC
+│  ├─ config.rs    便携配置读写、同名文件避让
+│  ├─ fonts.rs     系统中文字体加载（egui + fontdue 共用）
+│  ├─ win.rs       窗口定位（物理像素）
+│  └─ util.rs      时间戳、日志
+├─ assets/
+│  ├─ icon/        图标源文件（ICO + 16–256 各尺寸 PNG + 预览）
+│  ├─ screenshot-panel.png
+│  └─ screenshot-overlay.png
+├─ build.rs        把 ICO 写入 exe 资源
+├─ LICENSE-MIT.md
+└─ README.md
 ```
+
+## 已知限制 / FAQ
+
+**只支持 Windows 10 / 11**：强依赖 Win32（GDI、DWM、`RegisterHotKey`）。
+
+**截图是黑的？** 抓取受保护内容（部分 DRM 播放器、受保护窗口）时系统返回黑帧，与工具无关。
+
+**从托盘唤起时面板闪一下？** 覆盖层借主面板窗口进入"非最小化"状态（eframe 限制），截图结束后自动退回托盘。
+
+**没做**：滚动长截图、取色器、OCR、贴图。
+
+**想要另一种标注方式？** 开个 Issue 说说场景，比沉默更有用。
+
+## 许可证
+
+[MIT](LICENSE-MIT.md) © 2026 i314q159 —— 软件内也可直接查看：`帮助 → 开源声明（MIT）`。
+
+---
+
+<p align="center"><sub>如果这个小工具帮你省了几次来回，欢迎点个 ⭐ Star。</sub></p>

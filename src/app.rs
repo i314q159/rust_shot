@@ -1,7 +1,7 @@
 //! eframe application: control panel, overlay orchestration, clipboard / file plumbing.
 
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::capture::{self, PhysRect};
 use crate::overlay::{self, Export, Outcome, Session, Tool};
@@ -9,6 +9,16 @@ use crate::worker::{Worker, WorkerEvent};
 
 /// Window title of the control panel (also used to find the HWND).
 pub const PANEL_TITLE: &str = "RustShot 截图工具";
+
+/// Drawn icon assets (see `assets/icon/preview.png`).
+const ICON_32: &[u8] = include_bytes!("../assets/icon/rustshot-32.png");
+const ICON_64: &[u8] = include_bytes!("../assets/icon/rustshot-64.png");
+const ICON_256: &[u8] = include_bytes!("../assets/icon/rustshot-256.png");
+
+/// The licence text shipped with the binary and shown in the Help menu.
+const LICENSE_TEXT: &str = include_str!("../LICENSE-MIT.md");
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const APP_AUTHOR: &str = "i314q159";
 
 static UI_CTX: OnceLock<egui::Context> = OnceLock::new();
 
@@ -65,6 +75,12 @@ pub struct App {
     save_rx: Option<std::sync::mpsc::Receiver<SaveResult>>,
     /// Set while the "pick folder" dialog runs on its own thread.
     dir_rx: Option<std::sync::mpsc::Receiver<Option<PathBuf>>>,
+    /// Tray menu clicks arrive on the OS side; queue them here.
+    menu_events: Arc<Mutex<Vec<muda::MenuId>>>,
+    /// Tray icon clicks arrive on the OS side; queue them here.
+    tray_events: Arc<Mutex<Vec<tray_icon::TrayIconEvent>>>,
+    /// Help → 开源声明 window is open.
+    show_license: bool,
 }
 
 impl App {
@@ -85,6 +101,33 @@ impl App {
         let cfg = crate::config::Config::load();
         crate::util::log(&format!("app created, tray={}", tray.is_some()));
 
+        // egui only paints on demand, so a tray click would otherwise sit in the
+        // queue until the user happens to hover the panel. Queue the events and
+        // wake the UI right away.
+        let menu_events: Arc<Mutex<Vec<muda::MenuId>>> = Arc::new(Mutex::new(Vec::new()));
+        let tray_events: Arc<Mutex<Vec<tray_icon::TrayIconEvent>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        {
+            let queue = menu_events.clone();
+            muda::MenuEvent::set_event_handler(Some(move |ev: muda::MenuEvent| {
+                if let Ok(mut q) = queue.lock() {
+                    q.push(ev.id);
+                }
+                request_repaint();
+            }));
+        }
+        {
+            let queue = tray_events.clone();
+            tray_icon::TrayIconEvent::set_event_handler(Some(
+                move |ev: tray_icon::TrayIconEvent| {
+                    if let Ok(mut q) = queue.lock() {
+                        q.push(ev);
+                    }
+                    request_repaint();
+                },
+            ));
+        }
+
         Self {
             worker,
             session: None,
@@ -102,6 +145,9 @@ impl App {
             paint_hidden_sent: false,
             save_rx: None,
             dir_rx: None,
+            menu_events,
+            tray_events,
+            show_license: false,
         }
     }
 
@@ -185,20 +231,30 @@ impl App {
 
     fn pump_tray(&mut self, ctx: &egui::Context) {
         let mut action: Option<u8> = None;
+        let menu_ids = self
+            .menu_events
+            .lock()
+            .map(|mut q| std::mem::take(&mut *q))
+            .unwrap_or_default();
+        let tray_events = self
+            .tray_events
+            .lock()
+            .map(|mut q| std::mem::take(&mut *q))
+            .unwrap_or_default();
         if let Some(m) = &self.menu {
-            while let Ok(ev) = muda::MenuEvent::receiver().try_recv() {
-                if ev.id == m.region.id() {
+            for id in menu_ids {
+                if id == m.region.id() {
                     action = Some(0);
-                } else if ev.id == m.full.id() {
+                } else if id == m.full.id() {
                     action = Some(1);
-                } else if ev.id == m.panel.id() {
+                } else if id == m.panel.id() {
+                    action = Some(2);
+                } else if id == m.quit.id() {
                     action = Some(3);
-                } else if ev.id == m.quit.id() {
-                    action = Some(4);
                 }
             }
         }
-        while let Ok(ev) = tray_icon::TrayIconEvent::receiver().try_recv() {
+        for ev in tray_events {
             if let tray_icon::TrayIconEvent::Click {
                 button: tray_icon::MouseButton::Left,
                 button_state: tray_icon::MouseButtonState::Up,
@@ -413,7 +469,103 @@ impl App {
         Ok(path)
     }
 
+    fn menu_bar(&mut self, ui: &mut egui::Ui) {
+        egui::Frame::NONE
+            .fill(egui::Color32::from_rgb(28, 30, 35))
+            .inner_margin(egui::Margin::symmetric(10, 3))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.menu_button("文件", |ui| {
+                        if ui.button("区域截图\tF1").clicked() {
+                            let ctx = ui.ctx().clone();
+                            self.begin_capture(&ctx, Tool::Select);
+                            ui.close();
+                        }
+                        if ui.button("全屏截图\tF2").clicked() {
+                            self.capture_full();
+                            ui.close();
+                        }
+                        ui.separator();
+                        if ui.button("打开保存目录").clicked() {
+                            let _ = std::fs::create_dir_all(&self.save_dir);
+                            let _ = std::process::Command::new("explorer")
+                                .arg(&self.save_dir)
+                                .spawn();
+                            ui.close();
+                        }
+                        ui.separator();
+                        if ui.button("隐藏到托盘").clicked() {
+                            ui.ctx()
+                                .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                            ui.close();
+                        }
+                        if ui.button("退出").clicked() {
+                            self.quitting = true;
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                            ui.close();
+                        }
+                    });
+                    ui.menu_button("帮助", |ui| {
+                        if ui.button("开源声明（MIT）").clicked() {
+                            self.show_license = true;
+                            ui.close();
+                        }
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            egui::RichText::new(format!("v{APP_VERSION} · MIT"))
+                                .size(10.5)
+                                .color(egui::Color32::from_rgb(120, 127, 138)),
+                        );
+                    });
+                });
+            });
+    }
+
+    fn dialogs(&mut self, ctx: &egui::Context) {
+        if self.show_license {
+            let mut open = true;
+            egui::Window::new("开源声明 · MIT License")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(true)
+                .default_size([560.0, 420.0])
+                .show(ctx, |ui| {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "RustShot v{APP_VERSION} · 作者 {APP_AUTHOR} · MIT License"
+                        ))
+                        .size(12.0)
+                        .color(egui::Color32::from_rgb(150, 157, 168)),
+                    );
+                    ui.add_space(6.0);
+                    egui::ScrollArea::vertical()
+                        .max_height(330.0)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.label(egui::RichText::new(LICENSE_TEXT).monospace().size(11.5));
+                        });
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("复制全文").clicked() {
+                            ui.ctx().copy_text(LICENSE_TEXT.to_owned());
+                        }
+                        ui.label(
+                            egui::RichText::new("协议全文：LICENSE-MIT.md")
+                                .size(11.0)
+                                .color(egui::Color32::from_rgb(120, 127, 138)),
+                        );
+                    });
+                });
+            if !open {
+                self.show_license = false;
+            }
+        }
+    }
+
     fn panel(&mut self, ui: &mut egui::Ui) {
+        self.menu_bar(ui);
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::NONE
@@ -446,9 +598,17 @@ impl App {
                 ui.separator();
                 ui.add_space(8.0);
 
-                ui.label(egui::RichText::new("保存目录").size(12.5).color(egui::Color32::from_rgb(150, 157, 168)));
+                ui.label(egui::RichText::new("保存目录").size(12.5).color(egui::Color32::from_rgb(150, 157, 168)))
+                    .on_hover_text(match crate::config::path() {
+                        Some(p) => format!("配置保存在 {}\n可手动编辑 save_dir / auto_save", p.display()),
+                        None => "配置保存在程序目录下的 config.txt".to_owned(),
+                    });
                 ui.horizontal(|ui| {
-                    ui.add(
+                    // Reserve room for 更改 / 打开 / 重置, otherwise a long path
+                    // pushes them out of the row.
+                    let path_w = (ui.available_width() - 176.0).max(80.0);
+                    ui.add_sized(
+                        [path_w, 18.0],
                         egui::Label::new(
                             egui::RichText::new(self.save_dir.display().to_string())
                                 .size(12.0)
@@ -464,6 +624,15 @@ impl App {
                         let _ = std::process::Command::new("explorer")
                             .arg(&self.save_dir)
                             .spawn();
+                    }
+                    if ui
+                        .small_button("重置")
+                        .on_hover_text("恢复默认目录并写入配置文件")
+                        .clicked()
+                    {
+                        self.save_dir = crate::util::default_save_dir();
+                        self.persist();
+                        self.status = format!("已重置为默认目录：{}", self.save_dir.display());
                     }
                 });
                 if ui
@@ -567,45 +736,20 @@ fn save_png(img: &image::RgbaImage, path: &std::path::Path) -> Result<(), String
     .map_err(|e| e.to_string())
 }
 
-/// Programmatically drawn app icon (a framed crop mark).
+/// App icon, decoded from the drawn PNG assets in `assets/icon`.
 pub fn app_icon(size: u32) -> egui::IconData {
-    let mut rgba = vec![0u8; (size * size * 4) as usize];
-    let s = size as f32;
-    for y in 0..size {
-        for x in 0..size {
-            let u = (x as f32 + 0.5) / s;
-            let v = (y as f32 + 0.5) / s;
-            let r = 0.22f32;
-            let du = u.min(1.0 - u);
-            let dv = v.min(1.0 - v);
-            let inside = if du >= r || dv >= r {
-                true
-            } else {
-                let dx = r - du;
-                let dy = r - dv;
-                (dx * dx + dy * dy).sqrt() <= r
-            };
-            let i = ((y * size + x) * 4) as usize;
-            if !inside {
-                rgba[i + 3] = 0;
-                continue;
-            }
-            let ring = du < 0.075 || dv < 0.075;
-            let (cr, cg, cb) = if ring {
-                (240, 244, 250)
-            } else {
-                (56, 132, 255)
-            };
-            rgba[i] = cr;
-            rgba[i + 1] = cg;
-            rgba[i + 2] = cb;
-            rgba[i + 3] = 255;
-        }
-    }
+    let bytes = match size {
+        0..=32 => ICON_32,
+        33..=64 => ICON_64,
+        _ => ICON_256,
+    };
+    let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
+        .expect("embedded icon is a valid PNG")
+        .to_rgba8();
     egui::IconData {
-        rgba,
-        width: size,
-        height: size,
+        rgba: img.as_raw().clone(),
+        width: img.width(),
+        height: img.height(),
     }
 }
 
@@ -628,6 +772,8 @@ fn build_tray() -> (Option<tray_icon::TrayIcon>, Option<MenuHandles>) {
             },
         )
         .with_menu(Box::new(menu))
+        // Left click starts a capture; the menu belongs to the right button.
+        .with_menu_on_left_click(false)
         .build()
         .ok();
     (
@@ -674,6 +820,7 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
         self.run_overlay(&ctx);
         self.panel(ui);
+        self.dialogs(&ctx);
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
