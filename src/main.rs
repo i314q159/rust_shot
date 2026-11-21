@@ -75,7 +75,8 @@ fn main() {
         viewport: egui::ViewportBuilder::default()
             .with_title(app::panel_title())
             .with_inner_size([470.0, 460.0])
-            .with_min_inner_size([440.0, 420.0])
+            // 允许压到比较小：面板主体是可滚动的，底栏固定在底部。
+            .with_min_inner_size([400.0, 300.0])
             .with_icon(std::sync::Arc::new(icon)),
         ..Default::default()
     };

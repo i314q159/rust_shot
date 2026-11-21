@@ -119,6 +119,11 @@ impl App {
         cc.egui_ctx.all_styles_mut(|style| {
             style.spacing.item_spacing = egui::vec2(8.0, 8.0);
             style.spacing.button_padding = egui::vec2(10.0, 6.0);
+            // 常驻滚动条：默认的悬浮细条平时几乎看不见，面板压小时会以为内容丢了。
+            style.spacing.scroll.floating = false;
+            style.spacing.scroll.foreground_color = true;
+            style.spacing.scroll.bar_width = 9.0;
+            style.spacing.scroll.bar_inner_margin = 3.0;
         });
 
         let worker = Worker::spawn();
@@ -1072,140 +1077,151 @@ impl App {
                     .inner_margin(egui::Margin::same(18)),
             )
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading(egui::RichText::new("RustShot").size(24.0).strong());
-                    ui.label(
-                        egui::RichText::new(tr("截图 · 标注", "Screenshot · Annotate"))
-                            .size(12.0)
-                            .color(crate::theme::text_faint()),
-                    );
-                });
-                ui.add_space(10.0);
-
-                let bw = (ui.available_width() - 16.0) / 2.0;
-                ui.horizontal(|ui| {
-                    if big_button(ui, tr("区域截图", "Region capture"), "F1", bw).clicked() {
-                        let ctx = ui.ctx().clone();
-                        self.begin_capture(&ctx, Tool::Select, false);
-                    }
-                    if big_button(ui, tr("全屏截图", "Full screen"), "F2", bw).clicked() {
-                        let ctx = ui.ctx().clone();
-                        self.begin_capture(&ctx, Tool::Select, true);
-                    }
-                });
-
-                ui.add_space(12.0);
-                ui.separator();
-                ui.add_space(8.0);
-
-                ui.label(
-                    egui::RichText::new(tr("保存目录", "Save folder"))
-                        .size(12.5)
-                        .color(crate::theme::text_weak()),
-                )
-                    .on_hover_text(match crate::config::path() {
-                        Some(p) => tr1(
-                            "配置保存在 {}\n可手动编辑 save_dir / auto_save / theme / lang",
-                            "Config: {}\nedit save_dir / auto_save / theme / lang by hand",
-                            p.display(),
-                        ),
-                        None => tr(
-                            "配置保存在程序目录下的 config.txt",
-                            "Config lives in config.txt next to the exe",
-                        )
-                        .to_owned(),
-                    });
-                ui.horizontal(|ui| {
-                    // Reserve room for 更改 / 打开 / 重置, otherwise a long path
-                    // pushes them out of the row.
-                    let path_w = (ui.available_width() - 176.0).max(80.0);
-                    ui.add_sized(
-                        [path_w, 18.0],
-                        egui::Label::new(
-                            egui::RichText::new(self.save_dir.display().to_string())
-                                .size(12.0)
-                                .monospace(),
-                        )
-                        .truncate(),
-                    );
-                    if ui.small_button(tr("更改", "Change")).clicked() {
-                        self.pick_dir();
-                    }
-                    if ui.small_button(tr("打开", "Open")).clicked() {
-                        let _ = std::fs::create_dir_all(&self.save_dir);
-                        let _ = std::process::Command::new("explorer")
-                            .arg(&self.save_dir)
-                            .spawn();
-                    }
-                    if ui
-                        .small_button(tr("重置", "Reset"))
-                        .on_hover_text(tr(
-                            "恢复默认目录并写入配置文件",
-                            "Restore the default folder and write it to config.txt",
-                        ))
-                        .clicked()
-                    {
-                        self.save_dir = crate::util::default_save_dir();
-                        self.persist();
-                        self.status = tr1(
-                            "已重置为默认目录：{}",
-                            "Reset to the default folder: {}",
-                            self.save_dir.display(),
-                        );
-                    }
-                });
-                if ui
-                    .checkbox(&mut self.auto_save, tr("复制到剪贴板时同时保存 PNG", "Also save a PNG when copying"))
-                    .changed()
-                {
-                    self.persist();
-                }
-
-                ui.add_space(8.0);
-                egui::Frame::NONE
-                    .fill(crate::theme::hint())
-                    .stroke(egui::Stroke::new(1.0, crate::theme::line()))
-                    .corner_radius(8.0)
-                    .inner_margin(egui::Margin::same(10))
+                // 底栏固定，其余内容放进滚动区：窗口被压小时出现滚动条，
+                // 而不是把提示卡片和状态行挤到底栏下面。
+                let footer_h = 42.0;
+                let body_h = (ui.available_height() - footer_h).max(80.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("panel_body")
+                    .max_height(body_h)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.heading(egui::RichText::new("RustShot").size(24.0).strong());
                         ui.label(
-                            egui::RichText::new(
-                                tr(
-                                    "截图后：拖选区域 · 单击选中窗口 · Enter / Ctrl+C 复制 · Ctrl+S 另存为",
-                                    "After starting: drag a region · click a window · Enter / Ctrl+C copies · Ctrl+S saves",
-                                ),
-                            )
-                            .size(11.5)
-                            .color(crate::theme::text_weak()),
+                            egui::RichText::new(tr("截图 · 标注", "Screenshot · Annotate"))
+                                .size(12.0)
+                                .color(crate::theme::text_faint()),
                         );
-                        ui.label(
-                            egui::RichText::new(
-                                tr(
-                                    "标注：矩形 / 箭头 / 画笔 / 文字 / 马赛克 / 序号，Ctrl+Z 撤销，Ctrl+A 全选",
-                                    "Tools: rect / arrow / pen / text / mosaic / number · Ctrl+Z undo · Ctrl+A select all",
-                                ),
-                            )
-                            .size(11.5)
+                    });
+                    ui.add_space(10.0);
+
+                    let bw = (ui.available_width() - 16.0) / 2.0;
+                    ui.horizontal(|ui| {
+                        if big_button(ui, tr("区域截图", "Region capture"), "F1", bw).clicked() {
+                            let ctx = ui.ctx().clone();
+                            self.begin_capture(&ctx, Tool::Select, false);
+                        }
+                        if big_button(ui, tr("全屏截图", "Full screen"), "F2", bw).clicked() {
+                            let ctx = ui.ctx().clone();
+                            self.begin_capture(&ctx, Tool::Select, true);
+                        }
+                    });
+
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    ui.label(
+                        egui::RichText::new(tr("保存目录", "Save folder"))
+                            .size(12.5)
                             .color(crate::theme::text_weak()),
+                    )
+                        .on_hover_text(match crate::config::path() {
+                            Some(p) => tr1(
+                                "配置保存在 {}\n可手动编辑 save_dir / auto_save / theme / lang",
+                                "Config: {}\nedit save_dir / auto_save / theme / lang by hand",
+                                p.display(),
+                            ),
+                            None => tr(
+                                "配置保存在程序目录下的 config.txt",
+                                "Config lives in config.txt next to the exe",
+                            )
+                            .to_owned(),
+                        });
+                    ui.horizontal(|ui| {
+                        // Reserve room for 更改 / 打开 / 重置, otherwise a long path
+                        // pushes them out of the row.
+                        let path_w = (ui.available_width() - 176.0).max(80.0);
+                        ui.add_sized(
+                            [path_w, 18.0],
+                            egui::Label::new(
+                                egui::RichText::new(self.save_dir.display().to_string())
+                                    .size(12.0)
+                                    .monospace(),
+                            )
+                            .truncate(),
                         );
-                        ui.label(
-                            egui::RichText::new(tr(
+                        if ui.small_button(tr("更改", "Change")).clicked() {
+                            self.pick_dir();
+                        }
+                        if ui.small_button(tr("打开", "Open")).clicked() {
+                            let _ = std::fs::create_dir_all(&self.save_dir);
+                            let _ = std::process::Command::new("explorer")
+                                .arg(&self.save_dir)
+                                .spawn();
+                        }
+                        if ui
+                            .small_button(tr("重置", "Reset"))
+                            .on_hover_text(tr(
+                                "恢复默认目录并写入配置文件",
+                                "Restore the default folder and write it to config.txt",
+                            ))
+                            .clicked()
+                        {
+                            self.save_dir = crate::util::default_save_dir();
+                            self.persist();
+                            self.status = tr1(
+                                "已重置为默认目录：{}",
+                                "Reset to the default folder: {}",
+                                self.save_dir.display(),
+                            );
+                        }
+                    });
+                    if ui
+                        .checkbox(&mut self.auto_save, tr("复制到剪贴板时同时保存 PNG", "Also save a PNG when copying"))
+                        .changed()
+                    {
+                        self.persist();
+                    }
+
+                    ui.add_space(8.0);
+                    egui::Frame::NONE
+                        .fill(crate::theme::hint())
+                        .stroke(egui::Stroke::new(1.0, crate::theme::line()))
+                        .corner_radius(8.0)
+                        .inner_margin(egui::Margin::same(10))
+                        .show(ui, |ui| {
+                            for (zh, en) in [
+                                (
+                                    "截图后：拖选区域 · 单击选中窗口",
+                                    "After starting: drag a region · click a window",
+                                ),
+                                (
+                                    "标注：矩形 / 箭头 / 画笔 / 文字 / 马赛克 / 序号",
+                                    "Tools: rect / arrow / pen / text / mosaic / number",
+                                ),
+                                (
+                                    "复制：Enter / Ctrl+C · 另存：Ctrl+S",
+                                    "Copy: Enter / Ctrl+C · Save as: Ctrl+S",
+                                ),
+                                (
+                                    "撤销：Ctrl+Z · 全选：Ctrl+A · 取消：Esc",
+                                    "Undo: Ctrl+Z · Select all: Ctrl+A · Cancel: Esc",
+                                ),
+                                (
                                     "全局热键：F1 区域截图 · F2 全屏（进标注）· Ctrl+Alt+Q 退出",
                                     "Hotkeys: F1 region · F2 full screen (annotate) · Ctrl+Alt+Q quit",
-                                ))
-                                .size(11.5)
-                                .color(crate::theme::text_weak()),
-                        );
-                    });
+                                ),
+                            ] {
+                                ui.label(
+                                    egui::RichText::new(tr(zh, en))
+                                        .size(11.5)
+                                        .color(crate::theme::text_weak()),
+                                );
+                            }
+                        });
 
-                ui.add_space(8.0);
-                if !self.status.is_empty() {
-                    ui.label(
-                        egui::RichText::new(&self.status)
-                            .size(12.0)
-                            .color(crate::theme::ok()),
-                    );
-                }
+                    ui.add_space(8.0);
+                    if !self.status.is_empty() {
+                        ui.label(
+                            egui::RichText::new(&self.status)
+                                .size(12.0)
+                                .color(crate::theme::ok()),
+                        );
+                    }
+
+                });
 
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                     ui.horizontal(|ui| {

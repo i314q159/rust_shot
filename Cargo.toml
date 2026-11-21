@@ -1,6 +1,6 @@
 [package]
 name = "rust_shot"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 description = "RustShot - 轻量级 Windows 截图 / 标注 / 贴图工具"
 authors = ["RustShot"]
