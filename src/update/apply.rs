@@ -136,12 +136,19 @@ pub fn spawn_helper(source: &Path) -> Result<(), String> {
         std::env::current_exe().map_err(|e| tr1(strings::CANNOT_LOCATE_THE_RUNNING_PROGRAM, e))?;
     let helper = helper_copy(&exe)?;
     std::process::Command::new(helper)
-        .arg("--apply-update")
-        .arg(std::process::id().to_string())
-        .arg(source)
+        .args(apply_args(source, &exe))
         .spawn()
         .map(|_| ())
         .map_err(|e| tr1(strings::CANNOT_START_THE_UPDATER, e))
+}
+
+fn apply_args(source: &Path, app: &Path) -> Vec<std::ffi::OsString> {
+    vec![
+        "--apply-update".into(),
+        std::process::id().to_string().into(),
+        source.into(),
+        app.into(),
+    ]
 }
 
 fn helper_copy(exe: &Path) -> Result<PathBuf, String> {
@@ -166,5 +173,30 @@ impl Drop for Handle {
         if !self.0.is_invalid() {
             let _ = unsafe { CloseHandle(self.0) };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_args;
+    use std::ffi::OsString;
+    use std::path::Path;
+
+    #[test]
+    fn helper_gets_the_installed_exe_not_the_temp_copy() {
+        let args = apply_args(
+            Path::new(r"C:\Temp\RustShot\update\RustShot-Setup-0.1.9.exe"),
+            Path::new(r"C:\Program Files\RustShot\rust_shot.exe"),
+        );
+        assert_eq!(args.len(), 4);
+        assert_eq!(args[0], OsString::from("--apply-update"));
+        assert_eq!(
+            args[2],
+            OsString::from(r"C:\Temp\RustShot\update\RustShot-Setup-0.1.9.exe")
+        );
+        assert_eq!(
+            args[3],
+            OsString::from(r"C:\Program Files\RustShot\rust_shot.exe")
+        );
     }
 }
