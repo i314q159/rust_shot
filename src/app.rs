@@ -697,7 +697,8 @@ impl App {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
-                    ui.menu_button(tr("文件", "File"), |ui| {
+                    // 这是截图工具，没有"文件"概念：菜单就叫截图，退出/隐藏交给底栏和托盘。
+                    ui.menu_button(tr("截图", "Capture"), |ui| {
                         if ui
                             .button(tr("区域截图\tF1", "Region capture\tF1"))
                             .clicked()
@@ -717,17 +718,6 @@ impl App {
                             let _ = std::process::Command::new("explorer")
                                 .arg(&self.save_dir)
                                 .spawn();
-                            ui.close();
-                        }
-                        ui.separator();
-                        if ui.button(tr("隐藏到托盘", "Hide to tray")).clicked() {
-                            let ctx = ui.ctx().clone();
-                            self.hide_to_tray(&ctx);
-                            ui.close();
-                        }
-                        if ui.button(tr("退出", "Quit")).clicked() {
-                            self.quitting = true;
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                             ui.close();
                         }
                     });
