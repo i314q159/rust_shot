@@ -593,6 +593,7 @@ pub const THE_RELEASES_PAGE_FAILED_TOO: Text = Text {
     zh: "{}（发布页也读取失败：{}）",
     en: "{} (the releases page failed too: {})",
 };
+#[cfg(debug_assertions)]
 pub const COULD_NOT_READ_THE_TEST_PAYLOAD: Text = Text {
     zh: "读取测试数据失败：{}",
     en: "could not read the test payload: {}",

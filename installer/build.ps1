@@ -36,7 +36,12 @@ function Get-InstalledRustShotVersion {
 }
 
 
-$version = (Select-String -Path (Join-Path $root 'Cargo.toml') -Pattern '^version\s*=\s*"(.+)"$').Matches[0].Groups[1].Value
+$manifest = Get-Content -LiteralPath (Join-Path $root 'Cargo.toml') -Raw
+$package = [regex]::Match($manifest, '(?ms)^\[package\]\s*(?<body>.*?)(?=^\[|\z)')
+if (-not $package.Success) { throw 'Cargo.toml 缺少 [package] 段' }
+$versionMatch = [regex]::Match($package.Groups['body'].Value, '(?m)^version\s*=\s*"(.+)"\s*$')
+if (-not $versionMatch.Success) { throw 'Cargo.toml 的 [package] 段缺少 version' }
+$version = $versionMatch.Groups[1].Value
 Write-Host "RustShot $version"
 
 
