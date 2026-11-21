@@ -41,7 +41,7 @@ installer\build.ps1 -Interactive    # 安装时显示进度条
 | `src/config/` | `config.toml` 读写、字体探测、i18n、代理 |
 | `src/theme/` | 明/暗两套色板，统一走 `theme::bg()` 这类取值函数 |
 | `src/ui/` | `tray` 托盘菜单、`panel` 主面板、`dialogs`（license / proxy / release） |
-| `src/platform/` | `win.rs` Win32 杂项（离屏停放、任务栏、单实例）、`util.rs` 日志/路径/时间戳 |
+| `src/platform/` | `win.rs` Win32 杂项（离屏停放、任务栏、按标题找窗口）、`util.rs` 日志/路径/时间戳 |
 | `src/update/` | 版本比较、GitHub Release 解析、WinHTTP、SHA-256、`apply` 更新助手 |
 
 ## 硬规则
@@ -91,11 +91,11 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r tests\requirements.txt
 cargo build --release
 python tests\app\app.py            # 不带参数跑该脚本全部用例
-python tests\capture\overlay.py Ctrl+Z   # 带参数只跑单个
+python tests\capture\overlay.py undo    # 带参数只跑单个（undo / tools / mosaic / text）
 ```
 
 - 前置条件：脚本把 `target\release\rust_shot.exe` 复制到 `%TEMP%\rustshot-verify\app\` 干净启动；**运行时会接管鼠标键盘，机器必须空闲**；结束时会 `taskkill /F /IM rust_shot.exe`，会连托盘里正常运行的实例一起杀掉。
-- 脚本路径与 `src/` 同构：改 `src/capture/overlay/` → `python tests\capture\overlay.py`，改 `src/ui/tray.rs` → `python tests\ui\tray.py`，以此类推。
+- 脚本路径与 `src/` 同构：改 `src/capture/overlay/` → `python tests\capture\overlay.py`，改 `src/ui/tray.rs` → `python tests\ui\tray.py`，以此类推。同一模块下有多个脚本时按关注点分：`app/app.py`（启动/转发/隐藏）+ `app/files.py`（复制与落盘）、`config/config.py`（读写与首启）+ `config/i18n.py`（中英文文案）、`capture/capture.py`（抓屏与导出）+ `capture/overlay.py`（标注工具与撤销）。
 - 断言主要读 `%LOCALAPPDATA%\RustShot\rustshot.log`，截图落在 `%TEMP%\rustshot-verify\shots\`，退出码 0 = 全通过。
 - 需要代理时给 pip 加 `--proxy http://127.0.0.1:12334`。
 
