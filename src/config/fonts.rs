@@ -1,4 +1,4 @@
-//! System CJK font loading, shared by the egui UI and the exporter.
+
 
 use std::sync::{Arc, OnceLock};
 
@@ -24,7 +24,7 @@ fn probe(path: &str, index: u32) -> Option<Vec<u8>> {
     if bytes.len() < 1024 {
         return None;
     }
-    // Make sure the file really is a font fontdue can use.
+    
     let settings = fontdue::FontSettings {
         collection_index: index,
         ..Default::default()
@@ -47,12 +47,12 @@ fn load() -> Option<LoadedFont> {
     None
 }
 
-/// Bytes + face index of the UI/annotation font.
+
 pub fn cjk() -> Option<&'static LoadedFont> {
     FONT.get_or_init(load).as_ref()
 }
 
-/// Font used by the raster exporter.
+
 pub fn raster() -> Option<&'static fontdue::Font> {
     RASTER
         .get_or_init(|| {
@@ -67,7 +67,7 @@ pub fn raster() -> Option<&'static fontdue::Font> {
         .as_ref()
 }
 
-/// Install the CJK font into egui (as a fallback for the default families).
+
 pub fn install_egui_font(ctx: &egui::Context) {
     let Some(font) = cjk() else { return };
     let mut defs = egui::FontDefinitions::default();
@@ -88,7 +88,7 @@ pub fn install_egui_font(ctx: &egui::Context) {
 mod tests {
     #[test]
     fn a_font_is_found_on_this_system() {
-        // Every supported Windows ships at least one of the candidates.
+        
         let font = super::cjk().expect("system font");
         assert!(font.bytes.len() > 100_000);
         assert!(font.index < 8);

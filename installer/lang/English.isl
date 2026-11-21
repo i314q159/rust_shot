@@ -1,9 +1,3 @@
-; RustShot English message overrides.
-;
-; Default.isl already provides English; this file only rewrites the texts of the
-; four-page wizard and the uninstaller to match what the Chinese version says.
-; Task descriptions, shortcut comments and the post-install entry come from
-; [CustomMessages] in rust_shot.iss (english. prefix).
 
 [LangOptions]
 LanguageName=English

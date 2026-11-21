@@ -1,9 +1,9 @@
-//! Network proxy for the update check / download.
-//!
-//! `proxy=` in `config.toml` (and `帮助 → 网络代理`) decides how WinHTTP talks to
-//! GitHub: follow Windows, go direct, or use an explicit `host:port`.  The
-//! session is opened here so both the JSON check and the installer download
-//! share exactly one policy.
+
+
+
+
+
+
 
 use crate::config::i18n::strings;
 use std::ffi::c_void;
@@ -16,23 +16,23 @@ use windows::core::PCWSTR;
 
 use crate::config::i18n::{tr, tr1, tr3};
 
-/// Network proxy used by the update checker and the downloader.
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Proxy {
-    /// Whatever Windows is configured with (the default).
+    
     #[default]
     System,
-    /// No proxy at all.
+    
     Direct,
-    /// An explicit `host:port`.
+    
     Manual { host: String, port: u16 },
 }
 
 impl Proxy {
-    /// Parse the `proxy=` value written in `config.toml`.
-    ///
-    /// Empty → system; `direct` → no proxy; `7890` → `127.0.0.1:7890`;
-    /// `host:port` → manual. Anything else is ignored (system).
+    
+    
+    
+    
     pub fn parse(text: &str) -> Self {
         let text = text.trim();
         if text.is_empty() {
@@ -65,7 +65,7 @@ impl Proxy {
         Self::System
     }
 
-    /// `host:port` for a manual proxy, otherwise `None`.
+    
     pub fn address(&self) -> Option<String> {
         match self {
             Self::Manual { host, port } => Some(format!("{host}:{port}")),
@@ -73,7 +73,7 @@ impl Proxy {
         }
     }
 
-    /// One-line description for the dialog / error messages.
+    
     pub fn label(&self) -> String {
         match self {
             Self::System => tr(strings::SYSTEM_PROXY).to_owned(),
@@ -82,7 +82,7 @@ impl Proxy {
         }
     }
 
-    /// Value written back to `config.toml`.
+    
     pub fn key(&self) -> String {
         match self {
             Self::System => "system".to_owned(),
@@ -91,14 +91,14 @@ impl Proxy {
         }
     }
 
-    /// The setting currently in `config.toml` (read on demand, so a hand edit
-    /// applies to the next check without restarting).
+    
+    
     pub fn current() -> Self {
         crate::config::Config::load().proxy
     }
 }
 
-/// Owned WinHTTP session; closed on drop.
+
 pub struct Session(pub *mut c_void);
 
 impl Drop for Session {
@@ -109,15 +109,15 @@ impl Drop for Session {
     }
 }
 
-/// Open a WinHTTP session with `agent` as the user agent, applying [`Proxy`].
+
 pub fn open(agent: &str) -> Result<Session, String> {
     open_with(&Proxy::current(), agent)
 }
 
-/// [`open`] with an explicit proxy (used by tests and the dialog preview).
+
 pub fn open_with(proxy: &Proxy, agent: &str) -> Result<Session, String> {
-    // WinHttpOpen rejects NAMED_PROXY unless the proxy string is passed here,
-    // so the address goes straight into the call.
+    
+    
     let access = match proxy {
         Proxy::System => WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
         Proxy::Direct => WINHTTP_ACCESS_TYPE_NO_PROXY,
@@ -150,7 +150,7 @@ pub fn open_with(proxy: &Proxy, agent: &str) -> Result<Session, String> {
     Ok(Session(raw))
 }
 
-/// Text appended to network errors so the dialog shows which proxy was used.
+
 pub fn hint() -> String {
     tr1(strings::PROXY_2, Proxy::current().label())
 }
@@ -186,7 +186,7 @@ mod tests {
                 port: 8080
             }
         );
-        // Port 0 / garbage / missing host keep the safe default.
+        
         assert_eq!(Proxy::parse("0"), Proxy::System);
         assert_eq!(Proxy::parse("127.0.0.1:0"), Proxy::System);
         assert_eq!(Proxy::parse("127.0.0.1:70000"), Proxy::System);

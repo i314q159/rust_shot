@@ -1,4 +1,4 @@
-//! Dialog windows: license text, the update dialog and the proxy settings.
+
 
 use crate::app::{APP_AUTHOR, APP_VERSION, App, Install, LICENSE_TEXT};
 use crate::config::i18n::strings;
@@ -6,7 +6,7 @@ use crate::config::i18n::{tr, tr1, tr2};
 use crate::update::{self, Status as UpdateStatus};
 
 impl App {
-    /// Small dialog behind `帮助 → 网络代理`: system / direct / manual address.
+    
     pub(crate) fn proxy_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_proxy {
             return;
@@ -45,9 +45,9 @@ impl App {
                                 .hint_text("12334")
                                 .desired_width(56.0),
                         );
-                        // Validate on every keystroke, but only write the file
-                        // on 保存 / Enter, so a half-typed value never ends up in
-                        // config.toml.
+                        
+                        
+                        
                         let valid = self.manual_proxy().is_some();
                         if host_edit.changed() || port_edit.changed() {
                             self.proxy_bad = !valid;
@@ -153,7 +153,7 @@ impl App {
         }
     }
 
-    /// Update dialog: version numbers, release notes and the download entry.
+    
     pub(crate) fn update_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_update {
             return;

@@ -1,9 +1,9 @@
-//! Every user-visible Chinese / English text in one place.
-//!
-//! Adding a language means adding a field to [`Text`] and filling in the new
-//! literal here; call sites only ever refer to a named entry.
 
-/// One translatable text, with a variant for every supported UI language.
+
+
+
+
+
 #[derive(Clone, Copy, Debug)]
 pub struct Text {
     pub zh: &'static str,
@@ -229,7 +229,7 @@ pub const SELECT: Text = Text {
     zh: "选择",
     en: "Select",
 };
-/// A fixed pair used by the language-switch test.
+
 #[cfg(test)]
 pub const TEST_PAIR: Text = Text {
     zh: "中文",
@@ -660,11 +660,11 @@ pub const DARK_2: Text = Text {
     en: "dark",
 };
 
-/// Names of the UI languages, displayed in their own language.
+
 pub const LANGUAGE_ZH: &str = "中文";
 pub const LANGUAGE_EN: &str = "English";
 
-/// `--help` message (a single multi-line text pair).
+
 pub const HELP_MESSAGE: Text = Text {
     zh: "RustShot\n\n\
          无参数            启动后常驻托盘（不弹主面板；已在运行则静默退出）\n\
@@ -686,7 +686,7 @@ pub const HELP_MESSAGE: Text = Text {
          Hotkeys: F1 region - F2 full screen - Ctrl+Alt+Q quit",
 };
 
-/// Hints shown in the panel's tip card.
+
 pub const TIPS: [Text; 5] = [
     Text {
         zh: "截图后：拖选区域 · 单击选中窗口",
@@ -710,31 +710,31 @@ pub const TIPS: [Text; 5] = [
     },
 ];
 
-/// License dialog credit line: version, author, license.
+
 pub const LICENSE_CREDIT: Text = Text {
     zh: "RustShot v{} · 作者 {} · MIT License",
     en: "RustShot v{} · by {} · MIT License",
 };
 
-/// Update dialog credential line: version, repository.
+
 pub const UPDATE_CREDIT: Text = Text {
     zh: "当前版本 v{} · 仓库 {}",
     en: "Current v{} · repo {}",
 };
 
-/// Proxy/network error wrapper: message, OS error code, proxy key.
+
 pub const NET_ERROR: Text = Text {
     zh: "{}（error {} / {}）",
     en: "{} (error {} / {})",
 };
 
-/// Network error wrapper used by update checks: message, error code.
+
 pub const UPDATE_NET_ERROR: Text = Text {
     zh: "{}（{}）",
     en: "{} ({})",
 };
 
-/// Text baked into the exported self-test image.
+
 pub const SELFTEST: Text = Text {
     zh: "RustShot 标注测试：文字 / 中文 / 123",
     en: "RustShot annotation test: text / English / 123",

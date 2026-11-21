@@ -1,14 +1,14 @@
-//! Small helpers that don't belong anywhere else.
+
 
 use std::io::Write;
 use std::path::PathBuf;
 
-/// UTF-16, NUL terminated, for Win32 `W` APIs.
+
 pub fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// Local time stamp like `20261120_164530`.
+
 pub fn timestamp() -> String {
     let st = unsafe { windows::Win32::System::SystemInformation::GetLocalTime() };
     format!(
@@ -17,7 +17,7 @@ pub fn timestamp() -> String {
     )
 }
 
-/// Default folder used for auto-saved screenshots.
+
 pub fn default_save_dir() -> PathBuf {
     let home = std::env::var_os("USERPROFILE")
         .map(PathBuf::from)
@@ -25,7 +25,7 @@ pub fn default_save_dir() -> PathBuf {
     home.join("Pictures").join("RustShot")
 }
 
-/// `%LOCALAPPDATA%\RustShot\rustshot.log`
+
 pub fn log_path() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
@@ -33,7 +33,7 @@ pub fn log_path() -> PathBuf {
     base.join("RustShot").join("rustshot.log")
 }
 
-/// Append one line to the diagnostic log (best effort, never panics).
+
 pub fn log(msg: &str) {
     let path = log_path();
     if let Some(dir) = path.parent() {
@@ -53,7 +53,7 @@ pub fn log(msg: &str) {
     }
 }
 
-/// Log panics before the process dies (release builds are `panic = "abort"`).
+
 pub fn install_panic_logger() {
     std::panic::set_hook(Box::new(|info| {
         let location = info

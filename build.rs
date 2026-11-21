@@ -1,4 +1,4 @@
-//! Embeds the drawn icon into the executable's resources (Explorer / taskbar).
+
 
 fn main() {
     println!("cargo:rerun-if-changed=assets/icon/rustshot.ico");
@@ -12,8 +12,8 @@ fn main() {
         res.set("ProductName", "RustShot");
         res.set("OriginalFilename", "rust_shot.exe");
         res.set_language(0x0804);
-        // A missing resource compiler must not break the build; the app still
-        // runs, it just falls back to the default shell icon.
+        
+        
         if let Err(e) = res.compile() {
             println!("cargo:warning=exe icon skipped: {e}");
         }

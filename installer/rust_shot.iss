@@ -1,16 +1,3 @@
-; RustShot — Windows 安装脚本（Inno Setup 6）
-; RustShot — Windows installer script (Inno Setup 6)
-;
-; 编译：installer\build.ps1（推荐，会先 cargo build --release 并同步版本号）
-; 或：  ISCC.exe installer\rust_shot.iss /DMyAppVersion=0.1.0
-;
-; 始终安装到 C:\Program Files\RustShot（所有用户，需要一次 UAC 确认）；
-; 不提供用户目录安装选项，卸载与升级都在“设置 → 应用”里完成。
-;
-; 界面支持 English / 简体中文：安装包启动时弹语言选择（默认跟随系统 UI 语言）。
-; 四页向导与卸载器的文案在两个语言文件里（lang\English.isl、lang\ChineseSimplified.isl，
-; 都叠在默认的 Default.isl 之上）；任务描述、快捷方式注释、安装完成后启动项等
-; 非 [Messages] 文案在本文件的 [CustomMessages] 里，中英各写一份。
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.1.0"
@@ -20,8 +7,6 @@
 #define MyAppPublisher "i314q159"
 #define MyAppExeName "rust_shot.exe"
 #define MyAppURL "https://github.com/i314q159/rust_shot"
-; 固定 AppId：升级时识别为同一个程序，覆盖安装而不产生第二条卸载项。
-; "{{" 是 Inno 的字面 "{" 转义，最终注册表键为 {B7E1C0F2-…}_is1。
 #define MyAppId "{{B7E1C0F2-6B4A-4E1D-9A3C-2F5D8C1A7E64}"
 
 [Setup]
@@ -42,8 +27,6 @@ DisableDirPage=yes
 DisableProgramGroupPage=yes
 DisableReadyPage=yes
 AllowNoIcons=yes
-; 固定为全机器安装：始终装到 {autopf}（= C:\Program Files\RustShot），
-; 不提供 /CURRENTUSER 覆盖，避免出现 AppData\Local\Programs 这种用户目录安装。
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -57,11 +40,7 @@ WizardStyle=modern
 Compression=lzma2/max
 SolidCompression=yes
 ChangesEnvironment=yes
-; 已有实例在跑时，让安装/卸载先提示退出（对应 Local\RustShotSingleInstance）。
 AppMutex=RustShotSingleInstance
-; 每次安装都弹语言选择（默认选中系统语言，可手动改）；
-; UsePreviousLanguage=no 表示不记住上次的选择，避免旧值影响下一次安装。
-; 静默安装（/VERYSILENT）时不会弹，可用 /LANG=english 或 /LANG=chinesesimplified 指定。
 ShowLanguageDialog=yes
 UsePreviousLanguage=no
 
@@ -86,7 +65,6 @@ Name: "{autoprograms}\{cm:UninstallShortcut}"; Filename: "{uninstallexe}"; Comme
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "{cm:AppComment}"; Tasks: desktopicon
 
 [Registry]
-; 开机自启：--tray 启动后直接驻留托盘，不弹主面板；卸载时自动删掉该值。
 Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; \
     ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"" --tray"; \
     Flags: uninsdeletevalue; Tasks: startup
@@ -95,7 +73,6 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: s
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:RunNow}"; Flags: nowait postinstall skipifsilent
 
 [CustomMessages]
-; 任务 / 快捷方式 / 启动项等非 [Messages] 文案；对话框文案在 lang\*.isl 里。
 english.TasksGroup=Additional tasks:
 chinesesimplified.TasksGroup=附加设置：
 english.TaskDesktopIcon=Create a desktop shortcut
@@ -116,7 +93,6 @@ english.PathFailedHint=You can add this folder to PATH by hand:
 chinesesimplified.PathFailedHint=可以手动把这个目录加入 PATH：
 
 [Code]
-{ PATH 读写：管理员安装改 HKLM，/CURRENTUSER 安装改 HKCU。 }
 
 function EnvRoot: Integer;
 begin
@@ -134,7 +110,6 @@ begin
     Result := 'Environment';
 end;
 
-{ 目录已在 PATH 里（大小写不敏感）就不重复添加。 }
 function NeedsAddPath(Param: string): Boolean;
 var
   OrigPath: String;
@@ -155,7 +130,6 @@ begin
     exit;
   if RegQueryStringValue(EnvRoot, EnvSubKey, 'Path', OrigPath) and (OrigPath <> '') then
   begin
-    { 用户 PATH 末尾常带一个分号，避免拼出重复的 ";;" }
     if Copy(OrigPath, Length(OrigPath), 1) <> ';' then
       OrigPath := OrigPath + ';';
     OrigPath := OrigPath + Dir;
@@ -168,7 +142,6 @@ begin
            mbInformation, MB_OK);
 end;
 
-{ 卸载时只摘掉自己那一段，保留用户其它 PATH 条目与原有顺序。 }
 procedure RemoveFromPath(const Dir: String);
 var
   OrigPath, Work: String;

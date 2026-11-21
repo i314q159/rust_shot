@@ -1,4 +1,4 @@
-//! A couple of Win32 window helpers used to place our own windows exactly.
+
 
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -18,7 +18,7 @@ pub fn find_by_title(title: &str) -> Option<HWND> {
     if hwnd.is_invalid() { None } else { Some(hwnd) }
 }
 
-/// Move/resize a window using device pixels, bypassing all DPI guesswork.
+
 pub fn force_rect(hwnd: HWND, r: PhysRect) -> bool {
     unsafe {
         let ok = SetWindowPos(
@@ -55,8 +55,8 @@ pub fn force_rect_by_title(title: &str, r: PhysRect) -> bool {
     }
 }
 
-/// A window that exists, is visible and is not minimized is ready to host
-/// child viewports (eframe cannot create them from a hidden window).
+
+
 pub fn is_ready(title: &str) -> bool {
     match find_by_title(title) {
         Some(h) => unsafe { IsWindowVisible(h).as_bool() && !IsIconic(h).as_bool() },
@@ -64,21 +64,21 @@ pub fn is_ready(title: &str) -> bool {
     }
 }
 
-/// Far outside every monitor the desktop can reach.
+
 const PARK_X: i32 = -32000;
 const PARK_Y: i32 = -32000;
 
-/// What a parked window looked like before it was hidden, so it can be put
-/// back exactly as it was.
+
+
 #[derive(Clone, Copy, Debug)]
 pub struct Parked {
     pub rect: PhysRect,
-    /// `WS_EX_APPWINDOW` was on (taskbar entry forced).
+    
     pub app_window: bool,
 }
 
-/// Real geometry of a window. `GetWindowRect` lies while the window is
-/// minimized, `rcNormalPosition` does not.
+
+
 fn normal_rect(hwnd: HWND) -> Option<PhysRect> {
     unsafe {
         let mut wp = WINDOWPLACEMENT {
@@ -92,10 +92,10 @@ fn normal_rect(hwnd: HWND) -> Option<PhysRect> {
     }
 }
 
-/// Hide a window to the tray without minimizing it: the window stays mapped
-/// (eframe needs that to host the screenshot overlay) but is moved outside
-/// every monitor, un-minimized without being activated, and dropped from the
-/// taskbar / Alt+Tab. Returns the place it should be restored to.
+
+
+
+
 pub fn park_offscreen(title: &str) -> Option<Parked> {
     let hwnd = find_by_title(title)?;
     let rect = normal_rect(hwnd)?;
@@ -107,7 +107,7 @@ pub fn park_offscreen(title: &str) -> Option<Parked> {
         if ex & tool == 0 {
             SetWindowLongW(hwnd, GWL_EXSTYLE, (ex | tool) & !app);
         }
-        // Move it out of reach first: from here on nothing it does can be seen.
+        
         SetWindowPos(
             hwnd,
             None,
@@ -118,19 +118,19 @@ pub fn park_offscreen(title: &str) -> Option<Parked> {
             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         )
         .ok()?;
-        // Minimizing hands the focus to the next window (the panel is usually
-        // the foreground window when the user hides it); the caret must not
-        // stay on an invisible window.
+        
+        
+        
         let _ = ShowWindow(hwnd, SW_MINIMIZE);
-        // Leave the minimized state without activating: eframe can only host
-        // the overlay viewport from a mapped, un-minimized window, and this way
-        // a hotkey capture never shows or focuses the panel.
+        
+        
+        
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         Some(Parked { rect, app_window })
     }
 }
 
-/// Undo [`park_offscreen`]: taskbar entry back, window placed where it was.
+
 pub fn unpark(title: &str, parked: Parked) -> bool {
     let Some(hwnd) = find_by_title(title) else {
         return false;
@@ -159,9 +159,9 @@ pub fn unpark(title: &str, parked: Parked) -> bool {
     }
 }
 
-/// Keep a parked window out of the taskbar and Alt+Tab. Cheap and idempotent:
-/// eframe re-applies its own window styles on some frames, which would put the
-/// hidden panel back into the taskbar.
+
+
+
 pub fn hide_from_taskbar(title: &str) {
     let Some(hwnd) = find_by_title(title) else {
         return;
@@ -176,7 +176,7 @@ pub fn hide_from_taskbar(title: &str) {
     }
 }
 
-/// Un-minimize a window without activating it (no focus change, no flicker).
+
 pub fn show_without_activation(title: &str) -> bool {
     match find_by_title(title) {
         Some(h) => unsafe {

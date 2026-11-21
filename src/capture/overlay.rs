@@ -1,4 +1,4 @@
-//! The full-screen frozen-image overlay: region selection + annotation.
+
 
 use crate::config::i18n::strings;
 use std::collections::HashSet;
@@ -8,8 +8,8 @@ use crate::capture::shapes::{self, Col, Px, Shape};
 use crate::capture::{Frame, PhysRect};
 use crate::config::i18n::tr;
 
-/// Each capture gets its own window title so `FindWindowW` can never pick up
-/// the overlay of another instance (or the previous capture).
+
+
 pub fn overlay_title(serial: u64) -> String {
     format!("RustShot Overlay {serial}")
 }
@@ -95,10 +95,10 @@ enum Drag {
 pub struct Session {
     pub frame: Arc<Frame>,
     pub monitor: PhysRect,
-    /// Exact window title of this overlay (unique per capture).
+    
     title: String,
     tex: Option<egui::TextureHandle>,
-    /// Selection in frame-local device pixels.
+    
     sel: Option<egui::Rect>,
     anchor: Option<egui::Pos2>,
     tool: Tool,
@@ -112,13 +112,13 @@ pub struct Session {
     hover: Option<egui::Rect>,
     mosaic_seen: HashSet<(i32, i32)>,
     fix_tries: u32,
-    /// Physical pixels per point, per axis (a stretched window warps them).
+    
     rx: f32,
     ry: f32,
-    /// A drag inside the preset selection re-selects a region instead of moving
-    /// it: F2 preselects the whole screen, and moving that around is useless.
+    
+    
     repick: bool,
-    /// Measured toolbar size from the previous frame (for clamping).
+    
     toolbar_w: f32,
     toolbar_h: f32,
     pub outcome: Option<Outcome>,
@@ -133,7 +133,7 @@ fn clamp_rect_to(r: egui::Rect, bounds: egui::Rect) -> egui::Rect {
     egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, h))
 }
 
-/// Yellow / white swatches need a dark box behind the text editor.
+
 fn is_bright(c: egui::Color32) -> bool {
     0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32 > 150.0
 }
@@ -159,8 +159,8 @@ fn hit_handle(sel: egui::Rect, p: egui::Pos2, tol: f32) -> Option<usize> {
 }
 
 impl Session {
-    /// `full_frame` preselects the whole frame (F2): the overlay opens ready to
-    /// annotate or save the full screen, and a drag re-selects a region.
+    
+    
     pub fn new(
         frame: Arc<Frame>,
         monitor: PhysRect,
@@ -185,7 +185,7 @@ impl Session {
                 None
             }
         });
-        // F2 starts with everything selected so Enter copies the full screen.
+        
         let full_sel = full_frame.then(|| {
             egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(frame.w as f32, frame.h as f32))
         });
@@ -224,9 +224,9 @@ impl Session {
         )
     }
 
-    // -----------------------------------------------------------------
-    // painting + interaction, called once per frame inside the viewport
-    // -----------------------------------------------------------------
+    
+    
+    
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let screen = ctx.viewport_rect();
@@ -240,10 +240,10 @@ impl Session {
             ));
         }
 
-        // Pin the OS window to the monitor using device pixels, no DPI math.
-        // Painting must not wait for this: an unpainted overlay is a black
-        // window, and a couple of black frames read as a "flash" before the
-        // frozen image shows up.
+        
+        
+        
+        
         if self.fix_tries < 8 {
             let ok = crate::platform::win::force_rect_by_title(&self.title, self.monitor);
             self.fix_tries += 1;
@@ -285,7 +285,7 @@ impl Session {
         let to_p = |p: egui::Pos2| egui::pos2(origin.x + p.x / rx, origin.y + p.y / ry);
         let to_phys = |p: egui::Pos2| egui::pos2((p.x - origin.x) * rx, (p.y - origin.y) * ry);
 
-        // ---- dim everything outside the selection ----
+        
         let dim = egui::Color32::from_black_alpha(64);
         match self.sel {
             Some(sel) => {
@@ -341,7 +341,7 @@ impl Session {
             }
         }
 
-        // ---- annotations ----
+        
         if let Some(sel) = self.sel {
             let clip = egui::Rect::from_min_max(to_p(sel.min), to_p(sel.max));
             let sp = painter.with_clip_rect(clip);
@@ -350,7 +350,7 @@ impl Session {
             }
         }
 
-        // ---- selection chrome ----
+        
         if let Some(sel) = self.sel {
             let r = egui::Rect::from_min_max(to_p(sel.min), to_p(sel.max));
             painter.rect_stroke(
@@ -359,7 +359,7 @@ impl Session {
                 egui::Stroke::new(1.5, egui::Color32::from_rgb(64, 158, 255)),
                 egui::StrokeKind::Outside,
             );
-            // handles
+            
             let c = r.center();
             let pts = [
                 r.left_top(),
@@ -397,7 +397,7 @@ impl Session {
             );
         }
 
-        // ---- crosshair guides ----
+        
         if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
             let guide = egui::Stroke::new(1.0, egui::Color32::from_white_alpha(70));
             if self.drag == Drag::Select || self.sel.is_none() {
@@ -418,14 +418,14 @@ impl Session {
             }
         }
 
-        // ---- toolbar ----
+        
         let sel_pts = self
             .sel
             .map(|s| egui::Rect::from_min_max(to_p(s.min), to_p(s.max)));
         let mut over = self.show_toolbar(&ctx, screen, sel_pts);
         over.extend(self.show_text_editor(&ctx, rx, ry));
 
-        // ---- input ----
+        
         let (pressed, released) =
             ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_released()));
         let ptr = ctx.input(|i| i.pointer.interact_pos());
@@ -437,10 +437,10 @@ impl Session {
         {
             self.on_press(to_phys(p));
         }
-        // A started drag owns the pointer: keep feeding it even when the cursor
-        // wanders over the floating toolbar, otherwise the selection freezes as
-        // soon as it crosses the toolbar (the toolbar sits right under it) and
-        // ends up smaller than what the user dragged.
+        
+        
+        
+        
         if self.drag != Drag::None {
             if let Some(p) = ptr {
                 self.on_drag(to_phys(p));
@@ -450,7 +450,7 @@ impl Session {
             }
         }
 
-        // cursor feedback
+        
         if let Some(p) = ptr {
             let icon = if over_ui {
                 egui::CursorIcon::Default
@@ -504,9 +504,9 @@ impl Session {
         painter.galley(pos + egui::vec2(5.0, 2.0), galley, crate::theme::text());
     }
 
-    // -----------------------------------------------------------------
-    // mouse
-    // -----------------------------------------------------------------
+    
+    
+    
     fn on_press(&mut self, p: egui::Pos2) {
         if self.text_idx.is_some() {
             self.commit_text();
@@ -521,8 +521,8 @@ impl Session {
             }
             if sel.contains(p) {
                 match self.tool {
-                    // F2 opened with the whole screen selected: let the user drag
-                    // out a smaller region instead of shoving the frame around.
+                    
+                    
                     Tool::Select if self.repick => {
                         self.repick = false;
                         self.begin_selection(p);
@@ -546,15 +546,15 @@ impl Session {
                 return;
             }
         }
-        // Annotation tools only work inside the selection; keep it intact
-        // instead of silently starting a new one.
+        
+        
         if self.sel.is_some() && self.tool != Tool::Select {
             return;
         }
         self.begin_selection(p);
     }
 
-    /// Start a fresh selection with `p` as the anchor.
+    
     fn begin_selection(&mut self, p: egui::Pos2) {
         let p = egui::pos2(
             p.x.clamp(0.0, self.frame.w as f32),
@@ -649,9 +649,9 @@ impl Session {
         self.anchor = None;
     }
 
-    // -----------------------------------------------------------------
-    // shapes
-    // -----------------------------------------------------------------
+    
+    
+    
     fn start_shape(&mut self, p: Px) {
         let shape = match self.tool {
             Tool::Rect => Shape::Rect {
@@ -759,7 +759,7 @@ impl Session {
                     if !self.mosaic_seen.insert((gx, gy)) {
                         continue;
                     }
-                    // average colour of the source cell
+                    
                     let mut acc = [0u32; 3];
                     let mut n = 0u32;
                     let step = 2i32;
@@ -835,9 +835,9 @@ impl Session {
         self.text_focus_done = false;
     }
 
-    // -----------------------------------------------------------------
-    // toolbar / text editor areas
-    // -----------------------------------------------------------------
+    
+    
+    
     fn show_text_editor(&mut self, ctx: &egui::Context, rx: f32, ry: f32) -> Vec<egui::Rect> {
         let Some(idx) = self.text_idx else {
             return Vec::new();
@@ -863,9 +863,9 @@ impl Session {
         let mut rects = Vec::new();
         let want_focus = !self.text_focus_done;
         let shapes = &mut self.shapes;
-        // The editor sits on the frozen frame, so give it a background opposite
-        // to the text colour being typed (white text needs a dark box and vice
-        // versa); a fixed white box would swallow the white swatch.
+        
+        
+        
         let editing = match shapes.get(idx) {
             Some(Shape::Text { color, .. }) => *color,
             _ => crate::theme::text(),
@@ -1040,9 +1040,9 @@ impl Session {
         vec![area.response.rect.expand(4.0)]
     }
 
-    // -----------------------------------------------------------------
-    // keyboard + export
-    // -----------------------------------------------------------------
+    
+    
+    
     fn keys(&mut self, ctx: &egui::Context) {
         let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
         if esc {
@@ -1056,7 +1056,7 @@ impl Session {
         if self.text_idx.is_some() {
             return;
         }
-        // 1..7 pick the annotation tool.
+        
         let pick = ctx.input(|i| {
             [
                 i.key_pressed(egui::Key::Num1),
@@ -1071,8 +1071,8 @@ impl Session {
         if let Some(idx) = pick.iter().position(|p| *p) {
             self.tool = Tool::all()[idx];
         }
-        // Ctrl+C never arrives as a key event: egui-winit turns the clipboard
-        // shortcut into `Event::Copy`, so listen for that instead.
+        
+        
         let copy = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)));
         if copy {
             self.export(Export::Copy);
@@ -1223,7 +1223,7 @@ mod full_frame_tests {
         assert_eq!(sel.min, egui::pos2(100.0, 100.0));
         assert_eq!(sel.size(), egui::vec2(200.0, 150.0));
 
-        // Once narrowed down, dragging inside moves it like a normal selection.
+        
         s.on_press(egui::pos2(200.0, 175.0));
         assert!(matches!(s.drag, Drag::Move { .. }));
     }

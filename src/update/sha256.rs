@@ -1,8 +1,8 @@
-//! Minimal SHA-256 (FIPS 180-4), enough to verify a downloaded installer
-//! against the `SHA256SUMS.txt` published with the release.
-//!
-//! Hand-rolled on purpose: the update path already avoids TLS/serde
-//! dependencies, and this keeps it to a single small, testable file.
+
+
+
+
+
 
 const K: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -15,7 +15,7 @@ const K: [u32; 64] = [
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
-/// Streaming hash state, so a 5 MB installer never has to sit in memory.
+
 pub struct Sha256 {
     state: [u32; 8],
     buf: [u8; 64],
@@ -67,15 +67,15 @@ impl Sha256 {
         }
     }
 
-    /// Finish and return the digest as lowercase hex.
+    
     pub fn finish_hex(mut self) -> String {
         let bit_len = self.total.wrapping_mul(8);
         self.update(&[0x80]);
         while self.buf_len != 56 {
             self.update(&[0x00]);
         }
-        // `update` bumped `total` with the padding; the length field must hold
-        // the message length, so write it directly into the block.
+        
+        
         self.buf[56..64].copy_from_slice(&bit_len.to_be_bytes());
         let block = self.buf;
         self.compress(&block);
@@ -128,7 +128,7 @@ impl Sha256 {
     }
 }
 
-/// Hex digest of a whole in-memory buffer (tests).
+
 #[cfg(test)]
 pub fn hex(data: &[u8]) -> String {
     let mut h = Sha256::new();
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn matches_the_reference_vectors() {
-        // FIPS 180-4 / common test vectors.
+        
         assert_eq!(
             hex(b""),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn handles_block_boundaries() {
-        // Lengths around 55/56/63/64/65 exercise the padding edge cases.
+        
         for len in [55usize, 56, 63, 64, 65, 119, 120, 128] {
             let data = vec![0x5au8; len];
             let one = hex(&data);

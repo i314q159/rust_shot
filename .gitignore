@@ -3,3 +3,4 @@
 .workbuddy/
 .qoder-input-images/
 .vscode/
+*.py

@@ -1,6 +1,6 @@
-//! Background thread: global hotkeys and single-instance IPC.
-//!
-//! The window procedure is inherently unsafe; keep it readable.
+
+
+
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -23,10 +23,10 @@ use windows::core::PCWSTR;
 use crate::platform::util::wide;
 
 pub const WORKER_CLASS: &str = "RustShotWorkerWnd";
-/// Hidden top-level window that hears the system-wide `WM_SETTINGCHANGE`.
+
 pub const THEME_CLASS: &str = "RustShotThemeWnd";
 
-/// Commands sent to the running instance by a second process.
+
 pub const CMD_REGION: usize = 1;
 pub const CMD_FULL: usize = 2;
 pub const CMD_PANEL: usize = 4;
@@ -35,14 +35,14 @@ pub const CMD_CHECK_UPDATE: usize = 8;
 #[derive(Clone, Copy, Debug)]
 pub enum WorkerEvent {
     CaptureRegion,
-    /// Full screen straight to the clipboard (CLI `--full`).
+    
     CaptureFull,
-    /// Full screen through the overlay, whole frame preselected (F2).
+    
     CaptureFullOverlay,
     ShowPanel,
-    /// `--check-update` asked the running instance to check for updates.
+    
     CheckUpdate,
-    /// The OS light/dark setting may have changed.
+    
     ThemeChanged,
     Quit,
 }
@@ -77,7 +77,7 @@ fn emit(ev: WorkerEvent) {
     crate::app::request_repaint();
 }
 
-/// Wake the running UI from another process / thread.
+
 pub fn forward_to_running(cmd: usize) -> bool {
     unsafe {
         let class = wide(WORKER_CLASS);
@@ -88,7 +88,7 @@ pub fn forward_to_running(cmd: usize) -> bool {
     }
 }
 
-/// Cached `RegisterWindowMessageW("RustShotCommand")` id (one syscall per process).
+
 fn cmd_message() -> u32 {
     *CMD_MSG.get_or_init(registration_message)
 }
@@ -138,9 +138,9 @@ fn worker_thread(ready: Sender<isize>) {
             }
         };
 
-        // A message-only window never receives broadcast messages, so watching
-        // the OS light/dark switch needs a real — but never shown — top-level
-        // window.
+        
+        
+        
         let theme_class = wide(THEME_CLASS);
         let theme_wc = WNDCLASSW {
             lpfnWndProc: Some(theme_wndproc),
@@ -164,7 +164,7 @@ fn worker_thread(ready: Sender<isize>) {
             None,
         );
 
-        // Global hotkeys.
+        
         let _ = RegisterHotKey(Some(hwnd), 1, MOD_NOREPEAT, VK_F1.0 as u32);
         let _ = RegisterHotKey(Some(hwnd), 2, MOD_NOREPEAT, VK_F2.0 as u32);
         let _ = RegisterHotKey(
@@ -236,26 +236,26 @@ unsafe extern "system" fn theme_wndproc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    /// Broadcast whenever the user changes colours, metrics or the theme.
+    
     const WM_SETTINGCHANGE: u32 = 0x001A;
     if msg == WM_SETTINGCHANGE {
-        // Sent for many unrelated settings too; the app re-reads the value and
-        // ignores the ones that did not change the theme.
+        
+        
         emit(WorkerEvent::ThemeChanged);
         return LRESULT(0);
     }
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
-/// Handle of our own single-instance mutex, kept until the process exits.
-/// Dropping the handle would release ownership and let a second instance in.
+
+
 static INSTANCE_MUTEX: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
-/// Does any process still hold the single-instance mutex?
-///
-/// The updater asks this before running the installer: Inno refuses to install
-/// while `AppMutex` exists, and with `/VERYSILENT /SUPPRESSMSGBOXES` that shows
-/// up as a silent abort.
+
+
+
+
+
 pub fn mutex_exists() -> bool {
     unsafe {
         use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
@@ -272,8 +272,8 @@ pub fn mutex_exists() -> bool {
     }
 }
 
-/// Drop the single-instance mutex before quitting for an update, otherwise the
-/// freshly installed copy would see the old process and exit silently.
+
+
 pub fn release_instance() {
     let raw = INSTANCE_MUTEX.swap(0, std::sync::atomic::Ordering::SeqCst);
     if raw != 0 {
@@ -283,7 +283,7 @@ pub fn release_instance() {
     }
 }
 
-/// True when another instance already owns the single-instance mutex.
+
 pub fn instance_exists() -> bool {
     unsafe {
         use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;

@@ -1,10 +1,10 @@
-//! Dark palette for the control panel and capture overlay.
+
 
 use egui::Color32;
 
 use super::Palette;
 
-/// One complete set of dark chrome colours.
+
 pub const DARK: Palette = Palette {
     bg: Color32::from_rgb(0x1A, 0x1C, 0x20),
     card: Color32::from_rgb(0x24, 0x27, 0x2C),

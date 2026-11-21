@@ -1,4 +1,4 @@
-//! eframe application: control panel, overlay orchestration, clipboard / file plumbing.
+
 
 pub(crate) mod worker;
 
@@ -13,20 +13,20 @@ use crate::config::i18n::{tr, tr1};
 use crate::ui::tray::{MenuHandles, build_tray};
 use crate::update::{self, Status as UpdateStatus};
 
-/// Window title of the control panel (also used to find the HWND).
+
 pub fn panel_title() -> &'static str {
     crate::config::i18n::tr(strings::RUSTSHOT_SCREENSHOT)
 }
 
-/// Drawn icon assets (see `assets/icon/preview.png`).
-/// The licence text shipped with the binary and shown in the Help menu.
+
+
 pub(crate) const LICENSE_TEXT: &str = include_str!("../../LICENSE-MIT.md");
 pub(crate) const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub(crate) const APP_AUTHOR: &str = "i314q159";
 
 static UI_CTX: OnceLock<egui::Context> = OnceLock::new();
 
-/// Called from the worker thread to wake the UI.
+
 pub fn request_repaint() {
     if let Some(ctx) = UI_CTX.get() {
         ctx.request_repaint();
@@ -38,13 +38,13 @@ pub enum Start {
     Panel,
     Region,
     Full,
-    /// Start straight in the tray (used by the installer's autostart entry).
+    
     Tray,
-    /// Tray, then immediately check for updates (`--check-update`).
+    
     Check,
 }
 
-/// Progress of the silent update (`立即更新` in the update dialog).
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Install {
     Idle,
@@ -54,7 +54,7 @@ pub(crate) enum Install {
     Failed(String),
 }
 
-/// Messages from the download/verify thread.
+
 pub(crate) enum InstallEvent {
     Progress(u64, u64),
     Verifying,
@@ -62,7 +62,7 @@ pub(crate) enum InstallEvent {
     Done,
 }
 
-/// Result of the (worker thread) save dialog.
+
 pub(crate) enum SaveResult {
     Saved(PathBuf),
     Failed(String),
@@ -78,58 +78,58 @@ pub struct App {
     pub(crate) tray: Option<tray_icon::TrayIcon>,
     pub(crate) menu: Option<MenuHandles>,
     pub(crate) start: Option<Start>,
-    /// True only when the user really asked to quit (tray menu / exit button).
+    
     pub(crate) quitting: bool,
-    /// Set while the panel is being restored so the overlay can be created.
+    
     pub(crate) waiting_panel: bool,
-    /// Frames still to wait before the restored panel may host a viewport.
+    
     pub(crate) restore_frames: u8,
-    /// Bumped per capture so every overlay gets a fresh viewport id.
+    
     pub(crate) serial: u64,
-    /// Put the panel back into the tray once the capture is finished.
+    
     pub(crate) remiminimize: bool,
-    /// Where the panel lives while it is parked off screen (hidden to the tray).
+    
     pub(crate) panel_park: Option<crate::platform::win::Parked>,
-    /// RequestPaintWhileHidden only needs to be sent once per capture.
+    
     pub(crate) paint_hidden_sent: bool,
-    /// Set while the save dialog runs on its own thread.
+    
     pub(crate) save_rx: Option<std::sync::mpsc::Receiver<SaveResult>>,
-    /// Set while the "pick folder" dialog runs on its own thread.
+    
     pub(crate) dir_rx: Option<std::sync::mpsc::Receiver<Option<PathBuf>>>,
-    /// Tray menu clicks arrive on the OS side; queue them here.
+    
     pub(crate) menu_events: Arc<Mutex<Vec<muda::MenuId>>>,
-    /// Tray icon clicks arrive on the OS side; queue them here.
+    
     pub(crate) tray_events: Arc<Mutex<Vec<tray_icon::TrayIconEvent>>>,
-    /// Help → 开源声明 window is open.
+    
     pub(crate) show_license: bool,
-    /// Top bar theme choice (system / light / dark), persisted in config.toml.
+    
     pub(crate) theme_pref: crate::theme::Preference,
-    /// Top bar language choice (system / zh / en), persisted in config.toml.
+    
     pub(crate) lang_pref: crate::config::i18n::Preference,
-    /// Latest GitHub update check result shown in the panel / dialog.
+    
     pub(crate) update: UpdateStatus,
-    /// Set while the update request runs on its own thread.
+    
     pub(crate) update_rx: Option<std::sync::mpsc::Receiver<UpdateStatus>>,
-    /// Update dialog is open.
+    
     pub(crate) show_update: bool,
-    /// `auto_update=notice|silent`, persisted in config.toml.
+    
     pub(crate) auto_update: crate::update::AutoUpdate,
-    /// `proxy=` from config.toml; kept as loaded so saving other keys keeps it.
+    
     pub(crate) proxy: crate::config::proxy::Proxy,
-    /// IP / host being edited in the proxy dialog when the proxy is manual.
+    
     pub(crate) proxy_host: String,
-    /// Port being edited in the proxy dialog when the proxy is manual.
+    
     pub(crate) proxy_port: String,
-    /// Dialog selection: 0 system, 1 direct, 2 manual (kept even while the
-    /// typed address is still invalid, otherwise the input boxes would vanish).
+    
+    
     pub(crate) proxy_mode: u8,
-    /// The manual IP / port currently typed cannot be parsed.
+    
     pub(crate) proxy_bad: bool,
-    /// `帮助 → 网络代理` window is open.
+    
     pub(crate) show_proxy: bool,
-    /// Download / verify progress of the silent update.
+    
     pub(crate) install: Install,
-    /// Set while the update download runs on its own thread.
+    
     pub(crate) install_rx: Option<std::sync::mpsc::Receiver<InstallEvent>>,
 }
 
@@ -138,8 +138,8 @@ impl App {
         let _ = UI_CTX.set(cc.egui_ctx.clone());
         crate::config::fonts::install_egui_font(&cc.egui_ctx);
         let cfg = crate::config::Config::load();
-        // First run: drop a commented `config.toml` so the settings are easy to
-        // find and edit. Does nothing once the file exists.
+        
+        
         if !crate::config::exists() {
             cfg.save();
         }
@@ -156,7 +156,7 @@ impl App {
         cc.egui_ctx.all_styles_mut(|style| {
             style.spacing.item_spacing = egui::vec2(8.0, 8.0);
             style.spacing.button_padding = egui::vec2(10.0, 6.0);
-            // 常驻滚动条：默认的悬浮细条平时几乎看不见，面板压小时会以为内容丢了。
+            
             style.spacing.scroll.floating = false;
             style.spacing.scroll.foreground_color = true;
             style.spacing.scroll.bar_width = 9.0;
@@ -167,8 +167,8 @@ impl App {
         let (tray, menu) = build_tray();
         crate::platform::util::log(&format!("app created, tray={}", tray.is_some()));
 
-        // Tray start (plain launch / autostart): move the window off screen
-        // before the first frame, so nothing flashes on the desktop.
+        
+        
         let panel_park = if matches!(start, Start::Tray | Start::Check) {
             let parked = crate::platform::win::park_offscreen(panel_title());
             crate::platform::util::log(&format!(
@@ -180,9 +180,9 @@ impl App {
             None
         };
 
-        // egui only paints on demand, so a tray click would otherwise sit in the
-        // queue until the user happens to hover the panel. Queue the events and
-        // wake the UI right away.
+        
+        
+        
         let menu_events: Arc<Mutex<Vec<muda::MenuId>>> = Arc::new(Mutex::new(Vec::new()));
         let tray_events: Arc<Mutex<Vec<tray_icon::TrayIconEvent>>> =
             Arc::new(Mutex::new(Vec::new()));
@@ -255,7 +255,7 @@ impl App {
         }
     }
 
-    /// Kick off (or restart) the GitHub update check.
+    
     pub(crate) fn check_update(&mut self) {
         if self.update_rx.is_some() {
             return;
@@ -266,12 +266,12 @@ impl App {
         self.status = tr(strings::CHECKING_FOR_UPDATES).to_owned();
     }
 
-    /// Re-read the Windows light/dark setting and restyle when it changed.
-    ///
-    /// `WM_SETTINGCHANGE` also fires for unrelated settings, so the value is
-    /// read back and compared before touching the styles.
+    
+    
+    
+    
     fn refresh_theme(&mut self, ctx: &egui::Context) {
-        // A pinned light/dark choice ignores the OS entirely.
+        
         if self.theme_pref != crate::theme::Preference::System {
             return;
         }
@@ -284,7 +284,7 @@ impl App {
         ctx.request_repaint();
     }
 
-    /// Top bar choice: remember it, restyle immediately, write it to config.toml.
+    
     pub(crate) fn set_theme(&mut self, ctx: &egui::Context, pref: crate::theme::Preference) {
         self.theme_pref = pref;
         let dark = crate::theme::resolve(pref);
@@ -299,12 +299,12 @@ impl App {
         ctx.request_repaint();
     }
 
-    /// Top bar language choice: retitle the window and the tray, then save it.
+    
     pub(crate) fn set_lang(&mut self, ctx: &egui::Context, pref: crate::config::i18n::Preference) {
         self.lang_pref = pref;
         crate::config::i18n::set(crate::config::i18n::resolve(pref));
         self.persist();
-        // The tray menu lives on the OS side, so its labels have to be pushed.
+        
         if let Some(m) = &self.menu {
             m.region.set_text(tr(strings::REGION_CAPTURE));
             m.full.set_text(tr(strings::FULL_SCREEN));
@@ -324,7 +324,7 @@ impl App {
         ctx.request_repaint();
     }
 
-    /// Build a manual proxy from the IP / port boxes, if both are valid.
+    
     pub(crate) fn manual_proxy(&self) -> Option<crate::config::proxy::Proxy> {
         let host = self.proxy_host.trim();
         let port = self
@@ -342,8 +342,8 @@ impl App {
         })
     }
 
-    /// Commit the proxy picked in the dialog (`0` system, `1` direct, `2` manual)
-    /// and write it to config.toml. The next check picks it up.
+    
+    
     pub(crate) fn apply_proxy(&mut self, mode: u8) {
         self.proxy_mode = mode;
         match mode {
@@ -352,8 +352,8 @@ impl App {
                 self.proxy_bad = false;
             }
             2 => {
-                // Keep "manual" selected even when a box is empty or garbage;
-                // only a valid IP + port is written to config.toml.
+                
+                
                 if let Some(parsed) = self.manual_proxy() {
                     self.proxy = parsed;
                     self.proxy_bad = false;
@@ -404,16 +404,16 @@ impl App {
         let _ = std::thread::Builder::new()
             .name("rustshot-update-dl".into())
             .spawn(move || {
-                // Only an installed copy can replace itself; the portable exe
-                // updates by downloading a new portable zip from the release.
+                
+                
                 let asset = crate::update::setup_name(&rel.version);
                 let dest = crate::update::update_dir().join(&asset);
                 let result = (|| -> Result<(), String> {
                     let expected = crate::update::expected_sha(&rel.version, &asset)?;
                     let url = crate::update::asset_url(&rel.version, &asset);
                     let _ = tx.send(InstallEvent::Progress(0, 0));
-                    // One retry: a flaky proxy or a dropped connection should not
-                    // force the user to click again.
+                    
+                    
                     let mut attempt = 0;
                     while let Err(e) = crate::update::download(&url, &dest, |got, total| {
                         let _ = tx.send(InstallEvent::Progress(got, total));
@@ -493,7 +493,7 @@ impl App {
         }
     }
 
-    /// Release the single-instance mutex and quit so the helper can install.
+    
     fn quit_for_update(&mut self, ctx: &egui::Context) {
         crate::platform::util::log("update: verified, quitting so the helper can install");
         crate::app::worker::release_instance();
@@ -542,7 +542,7 @@ impl App {
         }
     }
 
-    /// Folder picker on its own thread: `pick_folder` also owns a modal loop.
+    
     pub(crate) fn pick_dir(&mut self) {
         if self.dir_rx.is_some() {
             self.status = tr(strings::THE_FOLDER_PICKER_IS_ALREADY_OPEN).to_owned();
@@ -619,10 +619,10 @@ impl App {
         }
     }
 
-    /// Hide the panel to the tray. The window is *not* minimized: it is parked
-    /// outside every monitor, so eframe can still host the overlay viewport and
-    /// a capture started from the tray never has to bring the panel back
-    /// (which used to flash it on screen and steal focus).
+    
+    
+    
+    
     pub(crate) fn hide_to_tray(&mut self, ctx: &egui::Context) {
         if self.panel_park.is_some() {
             return;
@@ -636,7 +636,7 @@ impl App {
                 ));
                 ctx.request_repaint();
             }
-            // No usable window: fall back to a plain minimize.
+            
             None => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
         }
     }
@@ -697,10 +697,10 @@ impl App {
         }
     }
 
-    /// Freeze the monitor under the pointer and open the annotation overlay.
-    ///
-    /// `full_frame` preselects the whole screen (F2): Enter copies it as-is, the
-    /// tools annotate on top, and a drag narrows it down to a region.
+    
+    
+    
+    
     pub(crate) fn begin_capture(&mut self, ctx: &egui::Context, tool: Tool, full_frame: bool) {
         let monitor = capture::monitor_at_cursor();
         let hover = if full_frame {
@@ -724,11 +724,11 @@ impl App {
                     full_frame,
                 ));
                 self.status.clear();
-                // eframe cannot create child viewports from a hidden or
-                // minimized window, so the panel has to be mapped before the
-                // overlay appears. When it is parked off screen that already
-                // holds and nothing visible happens; only a panel the user
-                // minimized by hand has to be restored for a frame.
+                
+                
+                
+                
+                
                 if !crate::platform::win::is_ready(panel_title()) {
                     if self.panel_park.is_some() {
                         crate::platform::win::show_without_activation(panel_title());
@@ -745,8 +745,8 @@ impl App {
         }
     }
 
-    /// --full from the command line: freeze, render the whole monitor and copy
-    /// it, without opening the overlay (scripts have nothing to click).
+    
+    
     pub(crate) fn capture_full(&mut self) {
         let monitor = capture::monitor_at_cursor();
         match capture::capture(monitor) {
@@ -766,9 +766,9 @@ impl App {
         if self.session.is_none() {
             return;
         }
-        // A minimized/hidden window cannot host child viewports: wait until the
-        // panel is really visible again (plus a couple of frames) before creating
-        // the overlay window, otherwise the backend aborts the process.
+        
+        
+        
         if self.waiting_panel {
             if self.restore_frames > 0 {
                 self.restore_frames -= 1;
@@ -788,8 +788,8 @@ impl App {
                 return;
             };
             let mon = sess.monitor;
-            // A fresh id per capture: reusing one can race with the previous
-            // overlay window being torn down.
+            
+            
             let id = egui::ViewportId::from_hash_of(("rustshot_overlay", self.serial));
             let title = overlay::overlay_title(self.serial);
             let builder = egui::ViewportBuilder::default()
@@ -825,7 +825,7 @@ impl App {
             self.status = tr(strings::CANCELLED).to_owned();
         }
         if self.session.is_none() && self.remiminimize {
-            // Capture started from the tray: go back to the tray.
+            
             self.remiminimize = false;
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
         }
@@ -854,7 +854,7 @@ impl App {
                 }
                 let dir = self.save_dir.clone();
                 let stem = format!("RustShot_{}", crate::platform::util::timestamp());
-                // `set_file_name` wants a bare file name, not a full path.
+                
                 let file_name = crate::config::unique_png(&dir, &stem)
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -862,9 +862,9 @@ impl App {
                 let (tx, rx) = std::sync::mpsc::channel();
                 self.save_rx = Some(rx);
                 self.status = tr(strings::CHOOSING_WHERE_TO_SAVE).to_owned();
-                // The dialog owns a nested message loop and a COM apartment:
-                // running it inside our paint pass froze the window, and it also
-                // ended up hidden behind the always-on-top overlay.
+                
+                
+                
                 std::thread::Builder::new()
                     .name("rustshot-save".into())
                     .spawn(move || {
@@ -934,9 +934,9 @@ fn save_png(img: &image::RgbaImage, path: &std::path::Path) -> Result<(), String
 }
 
 impl eframe::App for App {
-    /// Runs even while the window is hidden/minimized, so hotkeys keep working.
+    
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Closing the panel window goes to the tray instead of quitting.
+        
         if ctx.input(|i| i.viewport().close_requested()) && !self.quitting {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.hide_to_tray(ctx);
@@ -950,8 +950,8 @@ impl eframe::App for App {
         self.pump_worker(ctx);
         self.pump_tray(ctx);
         if self.panel_park.is_some() {
-            // eframe re-applies winit's window styles on the first frames, which
-            // would put the parked panel back into the taskbar.
+            
+            
             crate::platform::win::hide_from_taskbar(panel_title());
         }
         if let Some(start) = self.start.take() {
@@ -973,8 +973,8 @@ impl eframe::App for App {
             }
         }
         if self.session.is_some() && !self.paint_hidden_sent {
-            // The overlay lives in a child viewport of this window: keep painting
-            // even when the panel is hidden.
+            
+            
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaintWhileHidden);
             self.paint_hidden_sent = true;
         }
@@ -988,7 +988,7 @@ impl eframe::App for App {
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        // Same colour as the panel, so resizing never flashes the opposite theme.
+        
         let c = visuals.panel_fill;
         [
             c.r() as f32 / 255.0,

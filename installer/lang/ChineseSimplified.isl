@@ -1,8 +1,3 @@
-; RustShot 简体中文消息覆盖 / Simplified Chinese message overrides.
-;
-; Inno Setup 6 默认只带 Default.isl（英文），这里在它之上覆盖我们这套安装/卸载
-; 流程用到的文案；Task 描述、快捷方式注释等非 [Messages] 文案在
-; rust_shot.iss 的 [CustomMessages] 里（chinesesimplified. 前缀）。
 
 [LangOptions]
 LanguageName=简体中文

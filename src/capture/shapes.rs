@@ -1,4 +1,4 @@
-//! Annotation model, egui preview painting and raster export.
+
 
 use crate::capture::{Frame, PhysRect};
 
@@ -26,7 +26,7 @@ pub enum Shape {
     },
     Mosaic {
         cell: f32,
-        /// (x, y, rgb) squares covering the brushed area.
+        
         blocks: Vec<(f32, f32, [u8; 3])>,
     },
     Text {
@@ -43,14 +43,14 @@ pub enum Shape {
     },
 }
 
-/// Arrow geometry shared by the preview and the exporter.
+
 fn arrow_parts(a: Px, b: Px, w: f32) -> (Px, Px, [Px; 3]) {
     let dx = b.0 - a.0;
     let dy = b.1 - a.1;
     let len = (dx * dx + dy * dy).sqrt().max(0.001);
     let (ux, uy) = (dx / len, dy / len);
-    // `.clamp(min, max)` panics when min > max, which happens for very short
-    // arrows; min/max chains stay monotone and safe for every length.
+    
+    
     let head_len = (w * 4.0).min(len * 0.6).max(1.0);
     let head_w = (w * 3.0).min(head_len * 0.9).max(1.0);
     let tip = b;
@@ -65,15 +65,15 @@ fn arrow_parts(a: Px, b: Px, w: f32) -> (Px, Px, [Px; 3]) {
     (line_end, base, tri)
 }
 
-// ---------------------------------------------------------------------------
-// Preview (egui)
-// ---------------------------------------------------------------------------
 
-/// Paint shapes that are stored in frame pixels onto an egui painter whose
-/// points-per-pixel scale is (`rx`, `ry`) in physical pixels per point.
+
+
+
+
+
 pub fn paint(painter: &egui::Painter, shape: &Shape, rx: f32, ry: f32, origin: egui::Pos2) {
     let tp = |p: Px| egui::pos2(origin.x + p.0 / rx, origin.y + p.1 / ry);
-    // Stroke widths / font sizes use the average scale: they are isotropic.
+    
     let avg = ((rx + ry) * 0.5).max(0.01);
     let s = |w: f32| (w / avg).max(0.6);
     match shape {
@@ -142,11 +142,11 @@ pub fn paint(painter: &egui::Painter, shape: &Shape, rx: f32, ry: f32, origin: e
     }
 }
 
-// ---------------------------------------------------------------------------
-// Export (tiny-skia + fontdue)
-// ---------------------------------------------------------------------------
 
-/// Badge digits must stay readable on every palette colour.
+
+
+
+
 pub fn badge_text_color(c: Col) -> Col {
     let lum = 0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32;
     if lum > 150.0 {
@@ -160,13 +160,13 @@ fn sk_color(c: Col) -> tiny_skia::Color {
     tiny_skia::Color::from_rgba8(c.r(), c.g(), c.b(), c.a())
 }
 
-/// Crop `sel` out of `frame` and burn all annotations into it.
+
 pub fn render(frame: &Frame, sel: PhysRect, shapes: &[Shape]) -> image::RgbaImage {
     let w = sel.w.max(1) as u32;
     let h = sel.h.max(1) as u32;
     let fw = frame.w as i32;
 
-    // --- base = cropped screenshot (straight alpha, opaque) ---
+    
     let mut base = vec![0u8; (w as usize) * (h as usize) * 4];
     for y in 0..h as i32 {
         let sy = sel.y + y;
@@ -180,7 +180,7 @@ pub fn render(frame: &Frame, sel: PhysRect, shapes: &[Shape]) -> image::RgbaImag
 
     let mut layer = tiny_skia::Pixmap::new(w, h).expect("pixmap");
 
-    // Draw accumulated vector layer into base, then clear it.
+    
     let flush = |layer: &mut tiny_skia::Pixmap, base: &mut Vec<u8>| {
         let src = layer.data();
         for (dst, s) in base
@@ -383,7 +383,7 @@ pub fn render(frame: &Frame, sel: PhysRect, shapes: &[Shape]) -> image::RgbaImag
     image::RgbaImage::from_raw(w, h, base).expect("rgba buffer")
 }
 
-/// Number badge: the digit is drawn centred, so we shift by half the text box.
+
 fn fill_blocks(base: &mut [u8], w: u32, h: u32, x: f32, y: f32, cell: f32, rgb: [u8; 3]) {
     let x0 = x.round().max(0.0) as i32;
     let y0 = y.round().max(0.0) as i32;
@@ -455,7 +455,7 @@ fn draw_text(
     }
 }
 
-/// Centred text helper used for number badges in the preview export path.
+
 pub fn text_size(text: &str, size: f32) -> (f32, f32) {
     let Some(font) = crate::config::fonts::raster() else {
         return (0.0, 0.0);
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn arrow_head_scales_with_width_but_stays_inside() {
-        // A very short arrow must not get a head longer than the arrow itself.
+        
         let (line_end, _, tri) = arrow_parts((0.0, 0.0), (10.0, 0.0), 7.0);
         assert!(line_end.0 <= 10.0);
         assert!(tri[0].0 <= 10.0 + 0.001);
@@ -484,7 +484,7 @@ mod tests {
         let (_, base, tri) = arrow_parts((0.0, 0.0), (100.0, 0.0), 4.0);
         assert!(base.0 > 0.0 && base.0 < 100.0);
         assert_eq!(tri[0], (100.0, 0.0));
-        // Head is symmetric around the shaft.
+        
         assert!((tri[1].1 + tri[2].1).abs() < 0.001);
     }
 
@@ -502,7 +502,7 @@ mod tests {
 
     #[test]
     fn short_arrow_is_still_rasterized() {
-        // Regression: a 12px arrow used to panic inside f32::clamp(min > max).
+        
         let frame = Frame {
             w: 200,
             h: 120,
@@ -539,9 +539,9 @@ mod tests {
         assert_eq!((img.width(), img.height()), (1, 1));
     }
 
-    // -----------------------------------------------------------------
-    // one test per tool: every annotation must reach the exported pixels
-    // -----------------------------------------------------------------
+    
+    
+    
 
     fn white_frame(w: u32, h: u32) -> Frame {
         Frame {
@@ -573,7 +573,7 @@ mod tests {
                 w: 4.0,
             }],
         );
-        // Outline only: the middle stays white.
+        
         assert!(red(&img) > 300);
         assert_eq!(img.get_pixel(70, 55), &image::Rgba([255, 255, 255, 255]));
     }
@@ -626,10 +626,10 @@ mod tests {
                 r: 20.0,
             }],
         );
-        // Dark disc around the centre…
+        
         let c = img.get_pixel(62, 60);
         assert!(c[0] < 80 && c[1] < 80 && c[2] < 80, "disc pixel {c:?}");
-        // …with a light glyph inside it (white text on a dark badge).
+        
         let light = count(&img, |p| p[0] > 200 && p[1] > 200 && p[2] > 200);
         assert!(light > 20, "expected white digits, got {light}");
     }
@@ -669,7 +669,7 @@ mod tests {
                 },
             ],
         );
-        // The mosaic block is drawn after the rect, so it wins on that cell.
+        
         assert_eq!(img.get_pixel(14, 14), &image::Rgba([0, 0, 0, 255]));
     }
 }

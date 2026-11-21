@@ -1,4 +1,4 @@
-//! Tray icon, its menu and the embedded window icon.
+
 
 use crate::config::i18n::strings;
 use crate::config::i18n::tr;
@@ -49,7 +49,7 @@ pub(crate) fn build_tray() -> (Option<tray_icon::TrayIcon>, Option<MenuHandles>)
             },
         )
         .with_menu(Box::new(menu))
-        // Left click starts a capture; the menu belongs to the right button.
+        
         .with_menu_on_left_click(false)
         .build()
         .ok();

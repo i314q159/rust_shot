@@ -1,61 +1,61 @@
 # RustShot
 
 <p align="center">
-  <img src="assets/demo.gif" width="900" alt="RustShot 演示：冻结画面、框选区域、添加矩形、箭头和序号，然后复制">
+  <img src="assets/demo.gif" width="900" alt="RustShot demo: freeze the screen, select an area, add rectangles, arrows, and step numbers, then copy">
 </p>
 
-**RustShot 是一款 Windows 上的轻量截图与标注工具。** 按下快捷键即可定格屏幕，选择想要的区域，加上框、箭头、文字或马赛克，然后直接复制或保存。它启动后安静地待在系统托盘，不打断当前工作，适合快速把“看到的”变成“说清楚的”。
+**RustShot is a lightweight screenshot and annotation tool for Windows.** Hit a hotkey to freeze the screen, pick the area you want, add boxes, arrows, text, or a mosaic, then copy or save it. It sits quietly in the system tray after launch, so it never interrupts your work—perfect for turning “what you see” into “what you mean.”
 
-## 产品亮点
+## Why RustShot
 
-### 快速截图
+### Fast capture
 
-- `F1` 区域截图；`F2` 全屏截图并进入标注
-- 拖动框选区域，也可以单击直接选中窗口
-- 选区可继续移动、拉伸，确定前随时调整
-- `Enter` 或 `Ctrl+C` 复制；`Ctrl+S` 保存为 PNG
+- `F1` for area capture; `F2` for full-screen capture with annotation
+- Drag to select a region, or single-click to pick a window
+- Move and resize the selection before you confirm it
+- `Enter` or `Ctrl+C` to copy; `Ctrl+S` to save as PNG
 
-### 标注刚刚好
+### Just-right annotations
 
-内置 7 种工具：选择、矩形、箭头、画笔、文字、马赛克和自动序号；提供 3 种线宽、6 种颜色与逐步撤销。文字可以直接写在图片上，马赛克会真正处理导出内容，适合在发送前隐藏姓名、电话等敏感信息。
+Seven built-in tools: Select, Rectangle, Arrow, Pen, Text, Mosaic, and Auto Number, with three line widths, six colors, and step-by-step undo. Write text directly onto the image, and mosaics are baked into the exported content—so names, phone numbers, and other sensitive details stay hidden before you hit send.
 
 <p align="center">
-  <img src="assets/screenshot-overlay.png" width="720" alt="RustShot 标注界面：选区、工具栏和标注效果">
+  <img src="assets/screenshot-overlay.png" width="720" alt="RustShot annotation overlay: selection, toolbar, and annotations">
 </p>
 
-### 不打扰的工作方式
+### Stays out of your way
 
-启动后常驻托盘，不弹出主窗口，也不出现在 Alt+Tab 中；再次打开不会启动第二个实例。需要调整设置时，从托盘菜单打开主面板即可。
+It lives in the tray after startup—no main window, no Alt+Tab entry, and no second instance when you reopen it. When you need to adjust settings, open the main panel from the tray menu.
 
 <p align="center">
-  <img src="assets/screenshot-panel.png" width="300" alt="RustShot 主面板">
+  <img src="assets/screenshot-panel.png" width="300" alt="RustShot main panel">
 </p>
 
-### 顺手的配置
+### Handy settings
 
-支持中文 / 英文界面、浅色 / 深色主题，并可跟随系统自动切换。保存位置、复制时是否同时保存等常用选项，都可以在面板中调整。
+Chinese / English interface, light / dark theme, and an option to follow your system appearance. Save location, whether saving also happens on copy, and other everyday options are all in the panel.
 
-### 随时更新
+### Always up to date
 
-可以在应用内检查新版本、查看发布页面；安装版支持一键更新。
+Check for new versions and open the releases page from within the app. The installed build supports one-click updates.
 
-## 适用场景
+## Use cases
 
-- **问题反馈**：圈出报错位置，加序号说明复现步骤
-- **评审讲解**：用箭头和文字把结论指到具体数据
-- **隐私处理**：发送前对姓名、号码、内网地址打码
-- **文档与教程**：连续保存多张配图，自动避免同名覆盖
+- **Bug reports**: Circle the error and number the reproduction steps.
+- **Review walkthroughs**: Use arrows and text to tie a conclusion to the exact data.
+- **Privacy cleanup**: Mosaic names, phone numbers, and internal addresses before sharing.
+- **Docs and tutorials**: Save a series of images without overwriting files with the same name.
 
-## 三步完成一次分享
+## Three steps to share
 
-1. 按 `F1`，拖出要截的区域
-2. 用数字键 `1`–`7` 切换工具，添加标注
-3. 按 `Enter` 复制，或按 `Ctrl+S` 保存
+1. Press `F1` and drag over the area you want.
+2. Press `1`–`7` to switch tools and add annotations.
+3. Press `Enter` to copy, or `Ctrl+S` to save.
 
-## 下载
+## Download
 
-前往 [GitHub Releases](https://github.com/i314q159/rust_shot/releases) 下载 Windows 安装程序，安装后即可使用。支持 Windows 10 / 11。
+Get the Windows installer from [GitHub Releases](https://github.com/i314q159/rust_shot/releases). Supports Windows 10 / 11.
 
 ---
 
-<p align="center"><sub>如果它帮你省下几次来回沟通，欢迎点个 Star。</sub></p>
+<p align="center"><sub>If it saves you a few back-and-forths, a Star is always appreciated.</sub></p>

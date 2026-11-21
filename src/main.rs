@@ -1,4 +1,4 @@
-// RustShot — 轻量级 Windows 截图 / 标注工具
+
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
@@ -15,7 +15,7 @@ use config::i18n::{strings, tr};
 fn main() {
     platform::util::install_panic_logger();
     capture::set_dpi_aware();
-    // The help box and the window title need the language before the app exists.
+    
     config::i18n::set(config::i18n::resolve(config::Config::load().lang));
     platform::util::log(&format!(
         "start args={:?}",
@@ -24,8 +24,8 @@ fn main() {
 
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    // Hidden helper: `--apply-update <pid> <file>` installs a verified download
-    // after the app has exited and starts it again. Runs before any UI setup.
+    
+    
     if let Some(pos) = args.iter().position(|a| a == "--apply-update") {
         let pid = args
             .get(pos + 1)
@@ -41,7 +41,7 @@ fn main() {
         }
         return;
     }
-    // `None` = no flag given: a plain launch parks itself in the tray.
+    
     let mut requested: Option<app::Start> = None;
     let mut selftest: Option<String> = None;
     let mut i = 0;
@@ -90,7 +90,7 @@ fn main() {
         viewport: egui::ViewportBuilder::default()
             .with_title(app::panel_title())
             .with_inner_size([470.0, 460.0])
-            // 允许压到比较小：面板主体是可滚动的，底栏固定在底部。
+            
             .with_min_inner_size([400.0, 300.0])
             .with_icon(std::sync::Arc::new(icon)),
         ..Default::default()
@@ -105,19 +105,19 @@ fn main() {
     platform::util::log("app loop finished");
 }
 
-/// What this process should do, given its flags and the single-instance state.
-///
-/// `None` as the start mode means "exit quietly".
+
+
+
 fn resolve_launch(
     requested: Option<app::Start>,
     already_running: bool,
 ) -> (Option<app::Start>, Option<usize>) {
     match (requested, already_running) {
-        // A plain launch (double click, shortcut, autostart) is a tray app: the
-        // resident copy is already there, so stay quiet instead of stealing focus.
+        
+        
         (None, true) | (Some(app::Start::Tray), true) => (None, None),
         (None, false) | (Some(app::Start::Tray), false) => (Some(app::Start::Tray), None),
-        // Explicit window request: hand it to the running instance.
+        
         (Some(app::Start::Panel), true) => (None, Some(app::worker::CMD_PANEL)),
         (Some(app::Start::Region), true) => (None, Some(app::worker::CMD_REGION)),
         (Some(app::Start::Full), true) => (None, Some(app::worker::CMD_FULL)),
@@ -126,7 +126,7 @@ fn resolve_launch(
     }
 }
 
-/// `--help` must be visible in a GUI-subsystem build, where stdout goes nowhere.
+
 fn show_help() {
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK, MessageBoxW};
     use windows::core::PCWSTR;
@@ -142,8 +142,8 @@ fn show_help() {
     }
 }
 
-/// Render a sample annotated image without opening any window; useful for
-/// verifying the export pipeline (`rust_shot.exe --selftest out.png`).
+
+
 fn selftest_run(out: &str) {
     let mon = capture::monitor_at_cursor();
     let Some(frame) = capture::capture(mon) else {
@@ -191,7 +191,7 @@ fn demo_shapes(frame: &capture::Frame, sel: PhysRect) -> Vec<capture::shapes::Sh
         ));
     }
 
-    // mosaic over a 180x70 region
+    
     let mut blocks = Vec::new();
     let cell = 9.0f32;
     let mx = sel.x as f32 + 60.0;
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn plain_launch_parks_in_the_tray() {
         assert_eq!(resolve_launch(None, false), (Some(app::Start::Tray), None));
-        // Already resident: a second double click must not steal focus.
+        
         assert_eq!(resolve_launch(None, true), (None, None));
         assert_eq!(resolve_launch(Some(app::Start::Tray), true), (None, None));
         assert_eq!(

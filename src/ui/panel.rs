@@ -1,4 +1,4 @@
-//! Panel chrome: the menu bar, the main body and the small helpers they use.
+
 
 use crate::app::{APP_VERSION, App};
 use crate::capture::overlay::Tool;
@@ -14,7 +14,6 @@ impl App {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
-                    // 这是截图工具，没有"文件"概念：菜单就叫截图，退出/隐藏交给底栏和托盘。
                     ui.menu_button(tr(strings::CAPTURE), |ui| {
                         if ui.button(tr(strings::REGION_CAPTURE_F1)).clicked() {
                             let ctx = ui.ctx().clone();
@@ -151,8 +150,7 @@ impl App {
                     .inner_margin(egui::Margin::same(18)),
             )
             .show(ui, |ui| {
-                // 底栏固定，其余内容放进滚动区：窗口被压小时出现滚动条，
-                // 而不是把提示卡片和状态行挤到底栏下面。
+                
                 let footer_h = 42.0;
                 let body_h = (ui.available_height() - footer_h).max(80.0);
                 egui::ScrollArea::vertical()
@@ -201,8 +199,8 @@ impl App {
                             }
                         });
                         ui.horizontal(|ui| {
-                            // Reserve room for 更改 / 打开 / 重置, otherwise a long path
-                            // pushes them out of the row.
+                            
+                            
                             let path_w = (ui.available_width() - 176.0).max(80.0);
                             ui.add_sized(
                                 [path_w, 18.0],

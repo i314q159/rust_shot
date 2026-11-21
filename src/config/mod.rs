@@ -1,12 +1,12 @@
-//! Tiny portable settings file: `config.toml` next to the executable.
-//!
-//! TOML, but parsed without serde: a handful of top-level keys, `key = value`
-//! lines, literal (`'C:\…'`) strings so a hand-edited Windows path needs no
-//! escaping. The old `config.txt` (`key=value`) is still readable: a legacy copy
-//! is imported once and rewritten as TOML.
-//!
-//! `save_dir` may use `%USERPROFILE%`-style variables so the folder stays valid
-//! when the tool is moved between machines or user accounts.
+
+
+
+
+
+
+
+
+
 
 pub(crate) mod fonts;
 pub(crate) mod i18n;
@@ -15,24 +15,24 @@ pub(crate) mod proxy;
 use crate::config::i18n::strings;
 use std::path::{Path, PathBuf};
 
-/// Name of the settings file dropped next to `rust_shot.exe`.
+
 pub const CONFIG_FILE: &str = "config.toml";
-/// What older builds wrote instead; read (and migrated) once.
+
 const LEGACY_FILE: &str = "config.txt";
-/// Written into `save_dir` when the user resets the folder.
+
 pub const DEFAULT_SAVE_DIR_PARAM: &str = r"%USERPROFILE%\Pictures\RustShot";
 
 #[derive(Clone, Debug)]
 pub struct Config {
     pub save_dir: PathBuf,
     pub auto_save: bool,
-    /// Top bar theme choice: system / light / dark.
+    
     pub theme: crate::theme::Preference,
-    /// UI language: system / zh / en.
+    
     pub lang: crate::config::i18n::Preference,
-    /// Update check: only notify, or install silently once found.
+    
     pub auto_update: crate::update::AutoUpdate,
-    /// Proxy for the update check / download.
+    
     pub proxy: crate::config::proxy::Proxy,
 }
 
@@ -49,15 +49,15 @@ impl Default for Config {
     }
 }
 
-/// `…\<exe dir>\config.toml` — the portable location shown to the user.
+
 pub fn path() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|dir| dir.join(CONFIG_FILE)))
 }
 
-/// Where settings go when the install folder is read-only (Program Files, a
-/// network share…); older builds kept their file here too.
+
+
 fn fallback_dir() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
@@ -69,8 +69,8 @@ fn fallback_path() -> PathBuf {
     fallback_dir().join(CONFIG_FILE)
 }
 
-/// The `config.txt` files a previous version could have left behind: next to
-/// the exe first, then the LocalAppData copy.
+
+
 fn legacy_paths() -> [PathBuf; 2] {
     let portable = path()
         .and_then(|p| p.parent().map(|dir| dir.join(LEGACY_FILE)))
@@ -78,7 +78,7 @@ fn legacy_paths() -> [PathBuf; 2] {
     [portable, fallback_dir().join(LEGACY_FILE)]
 }
 
-/// True when a settings file (portable or LocalAppData) is already there.
+
 pub fn exists() -> bool {
     [path(), Some(fallback_path())]
         .into_iter()
@@ -86,7 +86,7 @@ pub fn exists() -> bool {
         .any(|p| p.exists())
 }
 
-/// Expand `%VAR%` (and `$VAR`-free) references in a hand-edited path.
+
 pub fn expand_env(value: &str) -> PathBuf {
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
@@ -98,7 +98,7 @@ pub fn expand_env(value: &str) -> PathBuf {
                 let name = &after[..end];
                 match std::env::var_os(name) {
                     Some(v) if !name.is_empty() => out.push_str(&v.to_string_lossy()),
-                    // Unknown variable: keep the text as typed.
+                    
                     _ => {
                         out.push('%');
                         out.push_str(name);
@@ -119,8 +119,8 @@ pub fn expand_env(value: &str) -> PathBuf {
 }
 
 impl Config {
-    /// Reads `config.toml` next to the exe, then the LocalAppData copy; an old
-    /// `config.txt` is imported once and rewritten in the new format.
+    
+    
     pub fn load() -> Self {
         for file in [path(), Some(fallback_path())].into_iter().flatten() {
             if let Ok(text) = std::fs::read_to_string(&file) {
@@ -132,8 +132,8 @@ impl Config {
                 continue;
             };
             let cfg = Self::parse(&text);
-            // Persist as TOML so the next start reads the new file. The old one
-            // is kept as `config.txt.bak` instead of being deleted.
+            
+            
             cfg.save();
             let backup = old.with_extension("txt.bak");
             if std::fs::rename(&old, &backup).is_ok() {
@@ -148,8 +148,8 @@ impl Config {
         Self::default()
     }
 
-    /// Parses the `key = value` lines. Bare values are accepted as well, so the
-    /// pre-TOML `config.txt` (`key=value`, no quotes) reads with the same code.
+    
+    
     fn parse(text: &str) -> Self {
         let mut cfg = Self::default();
         for line in lines_of(text) {
@@ -181,11 +181,11 @@ impl Config {
         cfg
     }
 
-    /// The text written on every change: valid TOML, literal strings so a
-    /// hand-edited `C:\…` path needs no escaping.
+    
+    
     fn render(&self) -> String {
-        // The default folder is written as a parameter so the file keeps working
-        // for another user account / another machine.
+        
+        
         let dir = if self.save_dir == crate::platform::util::default_save_dir() {
             DEFAULT_SAVE_DIR_PARAM.to_owned()
         } else {
@@ -210,8 +210,8 @@ impl Config {
         {
             return;
         }
-        // Read-only install folder: keep settings in LocalAppData instead of
-        // losing them.
+        
+        
         let fallback = fallback_path();
         if let Some(dir) = fallback.parent() {
             let _ = std::fs::create_dir_all(dir);
@@ -226,7 +226,7 @@ impl Config {
     }
 }
 
-/// Settings lines without a BOM, comments, blanks and (unused) section headers.
+
 fn lines_of(text: &str) -> impl Iterator<Item = &str> {
     text.trim_start_matches('\u{feff}')
         .lines()
@@ -234,12 +234,12 @@ fn lines_of(text: &str) -> impl Iterator<Item = &str> {
         .filter(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with('['))
 }
 
-/// TOML value → plain text: literal strings, basic strings with the common
-/// escapes, or a bare token (`theme = dark`), so hand edits and the old
-/// `config.txt` both work.
+
+
+
 fn unquote(raw: &str) -> Option<String> {
     if let Some(rest) = raw.strip_prefix('\'') {
-        // Literal string: no escapes at all, ends at the closing quote.
+        
         let end = rest.find('\'')?;
         return Some(rest[..end].to_owned());
     }
@@ -255,7 +255,7 @@ fn unquote(raw: &str) -> Option<String> {
                     Some('r') => out.push('\r'),
                     Some('\\') => out.push('\\'),
                     Some('"') => out.push('"'),
-                    // Unknown escape: keep it as typed instead of failing.
+                    
                     Some(other) => {
                         out.push('\\');
                         out.push(other);
@@ -267,14 +267,14 @@ fn unquote(raw: &str) -> Option<String> {
         }
         return Some(out);
     }
-    // Bare value, optionally followed by a comment.
+    
     let end = raw.find('#').unwrap_or(raw.len());
     let bare = raw[..end].trim();
     (!bare.is_empty()).then(|| bare.to_owned())
 }
 
-/// A TOML string for `value`: literal when possible, otherwise a basic string
-/// with the few escapes TOML requires.
+
+
 fn toml_string(value: &str) -> String {
     if !value.contains('\'') && !value.contains('\n') {
         format!("'{value}'")
@@ -288,8 +288,8 @@ fn toml_string(value: &str) -> String {
     }
 }
 
-/// `dir/stem.png`, or `dir/stem_1.png`, `dir/stem_2.png`… when it already exists,
-/// so two captures inside the same second never overwrite each other.
+
+
 pub fn unique_png(dir: &Path, stem: &str) -> PathBuf {
     let first = dir.join(format!("{stem}.png"));
     if !first.exists() {
@@ -334,8 +334,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// What we write must be TOML that we read back unchanged; literal strings
-    /// keep a Windows path readable in Notepad.
+    
+    
     #[test]
     fn generated_toml_reads_back() {
         let cfg = sample();
@@ -354,7 +354,7 @@ mod tests {
         assert_eq!(back.proxy.key(), "127.0.0.1:7890");
     }
 
-    /// A path with a single quote cannot use a literal TOML string.
+    
     #[test]
     fn quote_in_a_path_switches_to_a_basic_string() {
         let mut cfg = sample();
@@ -364,12 +364,12 @@ mod tests {
         assert_eq!(Config::parse(&text).save_dir, cfg.save_dir);
     }
 
-    /// Hand edits: BOM (Notepad), comments, double quotes, bare values, a
-    /// trailing comment and an empty proxy must all survive.
+    
+    
     #[test]
     fn hand_edited_toml_is_accepted() {
         let text = "\u{feff}# RustShot config\n\
-                    save_dir = \"D:\\\\shots\"   # 手写注释\n\
+                    save_dir = \"D:\\\\shots\"   # hand-written comment\n\
                     auto_save = false\n\
                     theme = dark\n\
                     lang = en\n\
@@ -384,7 +384,7 @@ mod tests {
         assert_eq!(cfg.proxy.key(), "system");
     }
 
-    /// `config.txt` from 0.1.x: `key=value`, unquoted Windows paths.
+    
     #[test]
     fn legacy_config_txt_still_parses() {
         let text = "save_dir=C:\\Shots\\RustShot\r\nauto_save=false\r\ntheme=light\r\n\

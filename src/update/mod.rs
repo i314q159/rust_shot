@@ -1,8 +1,8 @@
-//! Update check against the public GitHub releases API.
-//!
-//! Deliberately dependency free: WinHTTP (shipped with Windows) performs the
-//! HTTPS request and a small scanner pulls the handful of string fields we need
-//! out of the release JSON, so the binary does not grow a TLS stack or serde.
+
+
+
+
+
 
 pub(crate) mod apply;
 pub(crate) mod sha256;
@@ -22,36 +22,36 @@ use windows::Win32::Networking::WinHttp::{
 };
 use windows::core::PCWSTR;
 
-/// GitHub repository shown in the UI.
+
 pub const REPO: &str = "i314q159/rust_shot";
-/// Release page opened from the update dialog (also used as a manual fallback).
+
 pub const RELEASES_URL: &str = "https://github.com/i314q159/rust_shot/releases/latest";
-/// API endpoint queried by the check.
+
 const API_URL: &str = "https://api.github.com/repos/i314q159/rust_shot/releases/latest";
-/// Version of the running build; every check compares against it.
+
 pub const CURRENT: &str = env!("CARGO_PKG_VERSION");
 
-/// State of the update check, driving both the panel badge and the dialog.
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Status {
-    /// Not checked yet in this session.
+    
     Idle,
-    /// A background request is in flight.
+    
     Checking,
-    /// The running build is the newest published release.
+    
     Latest(String),
-    /// A newer release exists.
+    
     Newer(Release),
     Failed(String),
 }
 
-/// What a found update is allowed to do on its own (`auto_update=`).
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AutoUpdate {
-    /// Only report it; the user decides in the dialog.
+    
     #[default]
     Notice,
-    /// Download, verify and install without asking (still one UAC prompt).
+    
     Silent,
 }
 
@@ -71,22 +71,22 @@ impl AutoUpdate {
     }
 }
 
-/// The `latest` release as reported by GitHub.
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Release {
-    /// Normalised dotted version, e.g. `0.2.0`.
+    
     pub version: String,
     pub tag: String,
     pub name: String,
     pub url: String,
-    /// `YYYY-MM-DD` of the (UTC) publication date.
+    
     pub published: String,
     pub notes: String,
 }
 
-/// Ask GitHub for the latest release on a background thread.
-///
-/// The caller polls the returned receiver; the thread wakes the UI itself.
+
+
+
 pub fn check_async() -> Receiver<Status> {
     let (tx, rx) = channel();
     let _ = std::thread::Builder::new()
@@ -108,41 +108,41 @@ fn evaluate(result: Result<Release, String>) -> Status {
     }
 }
 
-/// Where GitHub publishes the files of a release tag.
+
 pub fn asset_url(version: &str, name: &str) -> String {
     format!("https://github.com/{REPO}/releases/download/v{version}/{name}")
 }
 
-/// File names published with every release (see `.github/workflows/release.yml`).
+
 pub fn setup_name(version: &str) -> String {
     format!("RustShot-Setup-{version}.exe")
 }
 pub const SUMS_NAME: &str = "SHA256SUMS.txt";
 
-/// `%TEMP%\RustShot\update` — downloads land here and are swapped in later.
+
 pub fn update_dir() -> PathBuf {
     std::env::temp_dir().join("RustShot").join("update")
 }
 
-/// Is this exe part of an installed copy (next to `unins000.exe`)?
-///
-/// Only installed copies self-update; a portable exe is just a bare file, so
-/// the update dialog points those users at the releases page instead.
+
+
+
+
 pub fn installed_copy() -> bool {
     std::env::current_exe()
         .map(|exe| installed_copy_at(&exe))
         .unwrap_or(false)
 }
 
-/// [`installed_copy`] for an arbitrary exe path (the updater helper runs from
-/// `%TEMP%`, so it has to ask about the app, not about itself).
+
+
 pub fn installed_copy_at(exe: &Path) -> bool {
     exe.parent()
         .map(|dir| dir.join("unins000.exe").exists())
         .unwrap_or(false)
 }
 
-/// `4.5 MB` style size for the download progress line.
+
 pub fn human_size(bytes: u64) -> String {
     const KB: f64 = 1024.0;
     let b = bytes as f64;
@@ -155,10 +155,10 @@ pub fn human_size(bytes: u64) -> String {
     }
 }
 
-/// Pick the hash for `name` out of a `SHA256SUMS.txt` payload.
-///
-/// Lines look like `<hex>  <file name>` (two spaces, as produced by the
-/// release workflow). Unknown names and malformed lines are skipped.
+
+
+
+
 pub fn checksum_for(sums: &str, name: &str) -> Option<String> {
     for line in sums.lines() {
         let line = line.trim();
@@ -176,7 +176,7 @@ pub fn checksum_for(sums: &str, name: &str) -> Option<String> {
     None
 }
 
-/// SHA-256 of a file, lowercase hex.
+
 pub fn sha256_file(path: &Path) -> Result<String, String> {
     let mut file =
         std::fs::File::open(path).map_err(|e| tr1(strings::CANNOT_READ_THE_DOWNLOADED_FILE, e))?;
@@ -195,7 +195,7 @@ pub fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(hasher.finish_hex())
 }
 
-/// Expected hash of one release asset, read from `SHA256SUMS.txt`.
+
 pub fn expected_sha(version: &str, asset: &str) -> Result<String, String> {
     let response = http_get(&asset_url(version, SUMS_NAME))?;
     if response.status != 200 {
@@ -208,10 +208,10 @@ pub fn expected_sha(version: &str, asset: &str) -> Result<String, String> {
         .ok_or_else(|| tr1(strings::THE_CHECKSUM_LIST_DOES_NOT_MENTION, asset))
 }
 
-/// Download `url` to `dest`, reporting `(received, total)` as it goes.
-///
-/// `total` is 0 when the server omits Content-Length. A failed or partial
-/// download is deleted so a retry never picks up a half file.
+
+
+
+
 pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
     let (host, path) = split_https(url)?;
     let host_w = crate::platform::util::wide(&host);
@@ -230,7 +230,7 @@ pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> R
 
     let result = (|| -> Result<(), String> {
         let session = crate::config::proxy::open(&format!("RustShot/{CURRENT}"))?;
-        // Downloads are big compared to the JSON check: give them more time.
+        
         let _ = unsafe { WinHttpSetTimeouts(session.0, 10000, 15000, 15000, 60000) };
         let conn = Handle::new(
             unsafe { WinHttpConnect(session.0, PCWSTR(host_w.as_ptr()), 443, 0) },
@@ -292,7 +292,7 @@ pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> R
             file.write_all(&buf[..read as usize])
                 .map_err(|e| tr1(strings::CANNOT_WRITE_THE_DOWNLOAD, e))?;
             received += read as u64;
-            // Report at most ~30 times a second, plus the final byte.
+            
             if received - last_report >= 128 * 1024 {
                 last_report = received;
                 progress(received, total);
@@ -314,7 +314,7 @@ pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> R
     result
 }
 
-/// Numeric response header (`WINHTTP_QUERY_* | WINHTTP_QUERY_FLAG_NUMBER`).
+
 fn header_u64(request: *mut c_void, query: u32) -> u64 {
     let mut value = 0u32;
     let mut len = std::mem::size_of::<u32>() as u32;
@@ -332,20 +332,20 @@ fn header_u64(request: *mut c_void, query: u32) -> u64 {
     if ok.is_err() { 0 } else { value as u64 }
 }
 
-/// Open a URL with the user's default browser.
+
 pub fn open_page(url: &str) {
     let _ = std::process::Command::new("explorer").arg(url).spawn();
     crate::platform::util::log(&format!("opened {url}"));
 }
 
-/// Fetch and parse the latest release.
-///
-/// The releases API is the primary source (it carries the notes). `api.github.com`
-/// is blocked or throttled on some networks, so the public releases page — which
-/// redirects to the newest tag — is used as a fallback.
+
+
+
+
+
 pub fn fetch_latest() -> Result<Release, String> {
-    // Debug builds can replay a captured payload (`RUSTSHOT_UPDATE_JSON`) so the
-    // "update available" dialog is verifiable without bumping the version.
+    
+    
     #[cfg(debug_assertions)]
     if let Some(path) = std::env::var_os("RUSTSHOT_UPDATE_JSON") {
         let text = std::fs::read_to_string(&path)
@@ -369,7 +369,7 @@ pub fn fetch_latest() -> Result<Release, String> {
     }
 }
 
-/// `https://api.github.com/repos/…/releases/latest`.
+
 fn fetch_from_api() -> Result<Release, String> {
     let response = http_get(API_URL)?;
     match response.status {
@@ -380,7 +380,7 @@ fn fetch_from_api() -> Result<Release, String> {
     }
 }
 
-/// `https://github.com/<repo>/releases/latest`, which redirects to the newest tag.
+
 fn fetch_from_page() -> Result<Release, String> {
     let response = http_get(RELEASES_URL)?;
     if response.status != 200 {
@@ -403,7 +403,7 @@ fn fetch_from_page() -> Result<Release, String> {
     })
 }
 
-/// `…/releases/tag/v0.2.0?x=1` → `v0.2.0`.
+
 pub fn tag_from_release_url(url: &str) -> Option<String> {
     let tail = url.split(['?', '#']).next()?;
     let (_, tag) = tail.split_once("/releases/tag/")?;
@@ -415,8 +415,8 @@ pub fn tag_from_release_url(url: &str) -> Option<String> {
     }
 }
 
-/// `v1.2.3` / `1.2.3` / `release-1.2` → `1.2.3` / `1.2`. `None` when there is no
-/// leading number at all.
+
+
 pub fn normalize_version(text: &str) -> Option<String> {
     let trimmed = text.trim();
     let trimmed = trimmed.strip_prefix(['v', 'V']).unwrap_or(trimmed);
@@ -447,7 +447,7 @@ fn version_parts(text: &str) -> Vec<u64> {
         .unwrap_or_default()
 }
 
-/// True when `latest` is a newer release than `current`.
+
 pub fn is_newer(latest: &str, current: &str) -> bool {
     let a = version_parts(latest);
     let b = version_parts(current);
@@ -464,7 +464,7 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
     false
 }
 
-/// Read the fields we care about from a GitHub release payload.
+
 pub fn parse_release(json: &str) -> Result<Release, String> {
     let fields = object_fields(json);
     let get = |key: &str| {
@@ -494,9 +494,9 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
     })
 }
 
-// ---------------------------------------------------------------- networking
 
-/// RAII wrapper so every early return closes the WinHTTP handle.
+
+
 struct Handle(*mut c_void);
 
 impl Handle {
@@ -519,23 +519,23 @@ fn net_err(what: &str) -> impl Fn(windows::core::Error) -> String {
     move |e| tr2(strings::UPDATE_NET_ERROR, what, e.code().0)
 }
 
-/// A finished HTTP response: status, final (post-redirect) URL and body text.
+
 pub struct HttpResponse {
     pub status: u32,
-    /// Final URL after redirects — how the releases page reveals its tag.
+    
     pub url: String,
     pub body: String,
 }
 
-/// HTTPS GET that follows redirects and returns the body as text.
+
 fn http_get(url: &str) -> Result<HttpResponse, String> {
     let (host, path) = split_https(url)?;
-    // The `W` entry points expect NUL terminated strings (`wide`); the header
-    // block is passed with an explicit length instead.
+    
+    
     let host_w = crate::platform::util::wide(&host);
     let path_w = crate::platform::util::wide(&path);
     let verb = crate::platform::util::wide("GET");
-    // GitHub rejects requests without a User-Agent header.
+    
     let headers = utf16(&format!(
         "Accept: application/vnd.github+json, text/html\r\n\
          User-Agent: RustShot/{CURRENT}\r\n\
@@ -604,7 +604,7 @@ fn utf16(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
 }
 
-/// HTTP status code of a response (`0` when the query itself fails).
+
 fn status_code(request: *mut c_void) -> u32 {
     let mut code = 0u32;
     let mut len = std::mem::size_of::<u32>() as u32;
@@ -622,10 +622,10 @@ fn status_code(request: *mut c_void) -> u32 {
     if ok.is_err() { 0 } else { code }
 }
 
-/// Final URL of a request, i.e. the target of the redirects it followed.
+
 fn final_url(request: *mut c_void) -> String {
     let mut len = 0u32;
-    // A null buffer asks for the required size (in bytes).
+    
     let _ = unsafe { WinHttpQueryOption(request, WINHTTP_OPTION_URL, None, &mut len) };
     if len == 0 {
         return String::new();
@@ -681,10 +681,10 @@ fn read_body(request: *mut c_void) -> Result<String, String> {
     String::from_utf8(body).map_err(|_| tr(strings::THE_GITHUB_RESPONSE_IS_NOT_UTF_8).to_owned())
 }
 
-// ---------------------------------------------------------------------- json
 
-/// Top-level `"key": "value"` pairs of a JSON object. Non-string values
-/// (objects, arrays, numbers…) are skipped: that is all a release payload needs.
+
+
+
 fn object_fields(json: &str) -> Vec<(String, String)> {
     let chars: Vec<char> = json.chars().collect();
     let mut out = Vec::new();
@@ -756,7 +756,7 @@ fn parse_string(chars: &[char], i: &mut usize) -> Option<String> {
                     'u' => {
                         let hi = parse_hex(chars, i, 4)?;
                         if (0xD800..0xDC00).contains(&hi) {
-                            // Surrogate pair: combine with the low half.
+                            
                             let mut lo = 0u32;
                             if chars.get(*i) == Some(&'\\') && chars.get(*i + 1) == Some(&'u') {
                                 *i += 2;
@@ -861,7 +861,7 @@ mod tests {
 
     #[test]
     fn nested_objects_do_not_leak_into_top_level_fields() {
-        // `author.name` and `assets[].name` must not be mistaken for the release name.
+        
         let rel = parse_release(SAMPLE).unwrap();
         assert!(!rel.name.contains("not the release name"));
         assert!(!rel.name.contains(".exe"));
@@ -950,7 +950,7 @@ mod tests {
             checksum_for(sums, "rust_shot.exe").as_deref(),
             Some("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210")
         );
-        // Unknown file, malformed hash, missing separator: no false matches.
+        
         assert!(checksum_for(sums, "RustShot-0.2.0-portable.zip").is_none());
         assert!(checksum_for("nothex  rust_shot.exe", "rust_shot.exe").is_none());
         assert!(checksum_for("0123  rust_shot.exe", "rust_shot.exe").is_none());
@@ -990,7 +990,7 @@ mod tests {
         );
     }
 
-    /// Network smoke test, skipped by default: `cargo test -- --ignored`.
+    
     #[test]
     #[ignore = "需要访问 GitHub"]
     fn live_release_lookup_works() {

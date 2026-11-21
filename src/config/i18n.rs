@@ -1,15 +1,15 @@
-//! UI language: Chinese or English.
-//!
-//! Windows' own UI language decides the default; `config.txt` (`lang=`) and the
-//! top bar can pin one. All user-visible text lives in [`strings`]; call sites
-//! only refer to a named entry such as `tr(strings::CAPTURE)`.
+
+
+
+
+
 
 pub mod strings;
 
 use std::sync::atomic::{AtomicU8, Ordering};
 use strings::Text;
 
-/// A concrete UI language.
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Lang {
     #[default]
@@ -18,7 +18,7 @@ pub enum Lang {
 }
 
 impl Lang {
-    /// `zh` / `en`, as written to the config file.
+    
     pub fn key(self) -> &'static str {
         match self {
             Self::Zh => "zh",
@@ -26,7 +26,7 @@ impl Lang {
         }
     }
 
-    /// Name shown in the language menu (always in its own language).
+    
     pub fn label(self) -> &'static str {
         match self {
             Self::Zh => strings::LANGUAGE_ZH,
@@ -35,10 +35,10 @@ impl Lang {
     }
 }
 
-/// User choice from the top bar, persisted in `config.txt`.
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Preference {
-    /// Follow the Windows UI language.
+    
     #[default]
     System,
     Zh,
@@ -54,7 +54,7 @@ impl Preference {
         }
     }
 
-    /// Parse a config value; anything unknown falls back to `system`.
+    
     pub fn parse(text: &str) -> Self {
         match text.trim().to_ascii_lowercase().as_str() {
             "zh" | "cn" | "chinese" => Self::Zh,
@@ -63,7 +63,7 @@ impl Preference {
         }
     }
 
-    /// Menu label in the current UI language.
+    
     pub fn label(self) -> String {
         match self {
             Self::System => tr(strings::FOLLOW_SYSTEM).to_owned(),
@@ -97,10 +97,10 @@ pub fn is_zh() -> bool {
     lang() == Lang::Zh
 }
 
-/// Windows' UI language, the default when nothing is pinned.
+
 pub fn detect() -> Lang {
     use windows::Win32::Globalization::GetUserDefaultUILanguage;
-    // LANGID: low 10 bits are the primary language; 0x04 is Chinese.
+    
     let primary = unsafe { GetUserDefaultUILanguage() } & 0x3ff;
     if primary == 0x04 { Lang::Zh } else { Lang::En }
 }
@@ -113,24 +113,24 @@ pub fn resolve(pref: Preference) -> Lang {
     }
 }
 
-/// Pick the active-language variant of a text entry.
+
 pub fn tr(text: Text) -> &'static str {
     if is_zh() { text.zh } else { text.en }
 }
 
-/// `tr` for a template with one `{}` placeholder (`format!` needs a literal, so
-/// these helpers do the substitution instead).
+
+
 pub fn tr1(text: Text, a: impl std::fmt::Display) -> String {
     tr(text).replacen("{}", &a.to_string(), 1)
 }
 
-/// Same as [`tr1`] with two `{}` placeholders.
+
 pub fn tr2(text: Text, a: impl std::fmt::Display, b: impl std::fmt::Display) -> String {
     let once = tr(text).replacen("{}", &a.to_string(), 1);
     once.replacen("{}", &b.to_string(), 1)
 }
 
-/// Same as [`tr1`] with three `{}` placeholders.
+
 pub fn tr3(
     text: Text,
     a: impl std::fmt::Display,

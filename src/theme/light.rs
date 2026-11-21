@@ -1,10 +1,10 @@
-//! Light palette for the control panel and capture overlay.
+
 
 use egui::Color32;
 
 use super::Palette;
 
-/// One complete set of light chrome colours.
+
 pub const LIGHT: Palette = Palette {
     bg: Color32::from_rgb(0xF7, 0xF8, 0xFA),
     card: Color32::from_rgb(0xFF, 0xFF, 0xFF),
