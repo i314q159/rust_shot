@@ -1,63 +1,364 @@
-//! One light palette shared by the control panel and the capture overlay.
+//! Light and dark palettes shared by the control panel and the capture overlay.
 //!
-//! Kept in one place so the panel card, the toolbar and the size tag never drift
-//! apart: a screenshot tool is used on top of arbitrary content, and light chrome
-//! keeps the frozen frame itself the brightest thing on screen.
+//! One palette at a time, picked from the system setting: egui resolves
+//! `ThemePreference::System` itself, and [`sync`] mirrors the resolved theme
+//! into the global palette so hand-painted chrome (size tag, notes card,
+//! toolbar) uses exactly the same colours as the widgets.
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use egui::Color32;
 
-/// Window background (slightly off-white so white cards stand out).
-pub const BG: Color32 = Color32::from_rgb(0xF7, 0xF8, 0xFA);
-/// Cards, toolbars, popups.
-pub const CARD: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
-/// Menu bar strip.
-pub const BAR: Color32 = Color32::from_rgb(0xEF, 0xF1, 0xF4);
-/// Hairline borders, separators.
-pub const LINE: Color32 = Color32::from_rgb(0xDC, 0xE0, 0xE6);
-/// Body text.
-pub const TEXT: Color32 = Color32::from_rgb(0x1F, 0x23, 0x29);
-/// Secondary text.
-pub const TEXT_WEAK: Color32 = Color32::from_rgb(0x5C, 0x63, 0x6E);
-/// Labels, captions, hints.
-pub const TEXT_FAINT: Color32 = Color32::from_rgb(0x8A, 0x91, 0x9C);
-/// Selection blue, same as the capture outline.
-pub const ACCENT: Color32 = Color32::from_rgb(0x2A, 0x7F, 0xFF);
-/// Tinted background for the active tool / selected row.
-pub const ACCENT_SOFT: Color32 = Color32::from_rgb(0xE4, 0xEF, 0xFF);
-/// Status text: done.
-pub const OK: Color32 = Color32::from_rgb(0x1E, 0x8E, 0x5A);
-/// Status text: problem.
-pub const WARN: Color32 = Color32::from_rgb(0xC0, 0x4A, 0x32);
+/// One complete set of chrome colours.
+pub struct Palette {
+    /// Window background (slightly offset from cards so they stand out).
+    pub bg: Color32,
+    /// Cards, toolbars, popups.
+    pub card: Color32,
+    /// Menu bar strip.
+    pub bar: Color32,
+    /// Hairline borders, separators.
+    pub line: Color32,
+    /// Body text.
+    pub text: Color32,
+    /// Secondary text.
+    pub text_weak: Color32,
+    /// Labels, captions, hints.
+    pub text_faint: Color32,
+    /// Selection blue, same as the capture outline.
+    pub accent: Color32,
+    /// Tinted background for the active tool / selected row.
+    pub accent_soft: Color32,
+    /// Status text: done.
+    pub ok: Color32,
+    /// Status text: problem.
+    pub warn: Color32,
+    /// Quiet surface for hint cards / notes boxes.
+    pub hint: Color32,
+    /// Button fill.
+    pub widget: Color32,
+    /// Button fill under the pointer.
+    pub widget_hover: Color32,
+    /// Button fill while pressed.
+    pub widget_active: Color32,
+    /// Border of a button under the pointer.
+    pub widget_stroke: Color32,
+}
 
-/// Install the light theme on a context (panel and overlay share it).
-pub fn apply(ctx: &egui::Context) {
-    let mut v = egui::Visuals::light();
-    v.panel_fill = BG;
-    v.window_fill = CARD;
-    v.extreme_bg_color = CARD;
-    v.faint_bg_color = Color32::from_rgb(0xF1, 0xF3, 0xF6);
-    v.override_text_color = Some(TEXT);
-    v.selection.bg_fill = ACCENT_SOFT;
+pub const LIGHT: Palette = Palette {
+    bg: Color32::from_rgb(0xF7, 0xF8, 0xFA),
+    card: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+    bar: Color32::from_rgb(0xEF, 0xF1, 0xF4),
+    line: Color32::from_rgb(0xDC, 0xE0, 0xE6),
+    text: Color32::from_rgb(0x1F, 0x23, 0x29),
+    text_weak: Color32::from_rgb(0x5C, 0x63, 0x6E),
+    text_faint: Color32::from_rgb(0x8A, 0x91, 0x9C),
+    accent: Color32::from_rgb(0x2A, 0x7F, 0xFF),
+    accent_soft: Color32::from_rgb(0xE4, 0xEF, 0xFF),
+    ok: Color32::from_rgb(0x1E, 0x8E, 0x5A),
+    warn: Color32::from_rgb(0xC0, 0x4A, 0x32),
+    hint: Color32::from_rgb(0xF1, 0xF3, 0xF6),
+    widget: Color32::from_rgb(0xF2, 0xF4, 0xF7),
+    widget_hover: Color32::from_rgb(0xE6, 0xEA, 0xF1),
+    widget_active: Color32::from_rgb(0xD9, 0xDF, 0xE8),
+    widget_stroke: Color32::from_rgb(0xC2, 0xC9, 0xD4),
+};
+
+pub const DARK: Palette = Palette {
+    bg: Color32::from_rgb(0x1A, 0x1C, 0x20),
+    card: Color32::from_rgb(0x24, 0x27, 0x2C),
+    bar: Color32::from_rgb(0x15, 0x17, 0x1B),
+    line: Color32::from_rgb(0x34, 0x38, 0x3F),
+    text: Color32::from_rgb(0xE7, 0xE9, 0xED),
+    text_weak: Color32::from_rgb(0xA9, 0xB1, 0xBC),
+    text_faint: Color32::from_rgb(0x85, 0x8E, 0x99),
+    accent: Color32::from_rgb(0x55, 0x98, 0xFF),
+    accent_soft: Color32::from_rgb(0x1E, 0x33, 0x52),
+    ok: Color32::from_rgb(0x4F, 0xC2, 0x8C),
+    warn: Color32::from_rgb(0xE8, 0x83, 0x6A),
+    hint: Color32::from_rgb(0x20, 0x23, 0x29),
+    widget: Color32::from_rgb(0x2A, 0x2E, 0x34),
+    widget_hover: Color32::from_rgb(0x34, 0x3A, 0x42),
+    widget_active: Color32::from_rgb(0x3C, 0x43, 0x4C),
+    widget_stroke: Color32::from_rgb(0x4A, 0x52, 0x60),
+};
+
+/// Which palette is live right now (mirrors egui's resolved theme).
+static DARK_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// User choice from the top bar, persisted in `config.txt`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Preference {
+    /// Mirror the Windows setting (and keep following it).
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Preference {
+    /// `system` / `light` / `dark`, as written to the config file.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+
+    /// Parse a config value; anything unknown falls back to `system`.
+    pub fn parse(text: &str) -> Self {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "light" => Self::Light,
+            "dark" => Self::Dark,
+            _ => Self::System,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::System => "跟随系统",
+            Self::Light => "浅色",
+            Self::Dark => "深色",
+        }
+    }
+}
+
+/// Resolve a preference into the palette that should be shown.
+pub fn resolve(pref: Preference) -> bool {
+    match pref {
+        Preference::System => system_is_dark(),
+        Preference::Light => false,
+        Preference::Dark => true,
+    }
+}
+
+/// The palette for the theme egui currently resolved.
+pub fn palette() -> &'static Palette {
+    if DARK_ACTIVE.load(Ordering::Relaxed) {
+        &DARK
+    } else {
+        &LIGHT
+    }
+}
+
+pub fn is_dark() -> bool {
+    DARK_ACTIVE.load(Ordering::Relaxed)
+}
+
+pub fn bg() -> Color32 {
+    palette().bg
+}
+
+pub fn card() -> Color32 {
+    palette().card
+}
+
+pub fn bar() -> Color32 {
+    palette().bar
+}
+
+pub fn line() -> Color32 {
+    palette().line
+}
+
+pub fn text() -> Color32 {
+    palette().text
+}
+
+pub fn text_weak() -> Color32 {
+    palette().text_weak
+}
+
+pub fn text_faint() -> Color32 {
+    palette().text_faint
+}
+
+pub fn accent() -> Color32 {
+    palette().accent
+}
+
+pub fn ok() -> Color32 {
+    palette().ok
+}
+
+pub fn warn() -> Color32 {
+    palette().warn
+}
+
+pub fn hint() -> Color32 {
+    palette().hint
+}
+
+/// Does Windows itself use the dark theme for apps?
+///
+/// Read straight from the registry instead of `uxtheme!ShouldAppsUseDarkMode`:
+/// that export caches the value inside uxtheme, so a long-running process can
+/// keep reporting the theme it saw first. `AppsUseLightTheme` is the same switch
+/// the Settings app writes (`0` = dark, missing/anything else = light).
+pub fn system_is_dark() -> bool {
+    use windows::Win32::Foundation::WIN32_ERROR;
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+    use windows::core::PCWSTR;
+
+    let subkey = crate::util::wide(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+    let name = crate::util::wide("AppsUseLightTheme");
+    let mut value = 1u32;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey.as_ptr()),
+            PCWSTR(name.as_ptr()),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut value as *mut u32 as *mut std::ffi::c_void),
+            Some(&mut size),
+        )
+    };
+    status == WIN32_ERROR(0) && value == 0
+}
+
+/// Install the palette for `dark` and make egui use it.
+///
+/// Both palettes are registered (popups that outlive a switch keep sane
+/// colours), then the preference is pinned to the value we read ourselves —
+/// that is what makes the switch deterministic even when the backend keeps
+/// reporting a stale system theme.
+pub fn apply(ctx: &egui::Context, dark: bool) {
+    DARK_ACTIVE.store(dark, Ordering::Relaxed);
+    ctx.set_visuals_of(egui::Theme::Light, visuals(&LIGHT, false));
+    ctx.set_visuals_of(egui::Theme::Dark, visuals(&DARK, true));
+    ctx.set_theme(if dark {
+        egui::ThemePreference::Dark
+    } else {
+        egui::ThemePreference::Light
+    });
+}
+
+fn visuals(p: &Palette, dark: bool) -> egui::Visuals {
+    let mut v = if dark {
+        egui::Visuals::dark()
+    } else {
+        egui::Visuals::light()
+    };
+    v.panel_fill = p.bg;
+    v.window_fill = p.card;
+    v.extreme_bg_color = p.card;
+    v.faint_bg_color = p.hint;
+    v.override_text_color = Some(p.text);
+    v.selection.bg_fill = p.accent_soft;
     // egui uses `selection.stroke.color` as the *text* colour of a selected
-    // selectable label / selected text, so it must stay dark on the pale tint.
-    v.selection.stroke = egui::Stroke::new(1.0, TEXT);
+    // selectable label / selected text, so it must stay readable on the tint.
+    v.selection.stroke = egui::Stroke::new(1.0, p.text);
 
-    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, LINE);
-    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, TEXT_WEAK);
+    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, p.line);
+    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, p.text_weak);
 
-    // Buttons sit on an off-white background, so they need a visible border
-    // instead of the flat grey of egui's default light widgets.
-    v.widgets.inactive.weak_bg_fill = Color32::from_rgb(0xF2, 0xF4, 0xF7);
-    v.widgets.inactive.bg_fill = Color32::from_rgb(0xF2, 0xF4, 0xF7);
-    v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, LINE);
-    let hover = Color32::from_rgb(0xE6, 0xEA, 0xF1);
-    v.widgets.hovered.weak_bg_fill = hover;
-    v.widgets.hovered.bg_fill = hover;
-    v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, Color32::from_rgb(0xC2, 0xC9, 0xD4));
-    let active = Color32::from_rgb(0xD9, 0xDF, 0xE8);
-    v.widgets.active.weak_bg_fill = active;
-    v.widgets.active.bg_fill = active;
-    v.widgets.active.bg_stroke = egui::Stroke::new(1.0, ACCENT);
+    // Buttons sit on our own background, so they need a visible border instead
+    // of the flat grey of egui's stock widgets.
+    v.widgets.inactive.weak_bg_fill = p.widget;
+    v.widgets.inactive.bg_fill = p.widget;
+    v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, p.line);
+    v.widgets.hovered.weak_bg_fill = p.widget_hover;
+    v.widgets.hovered.bg_fill = p.widget_hover;
+    v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, p.widget_stroke);
+    v.widgets.active.weak_bg_fill = p.widget_active;
+    v.widgets.active.bg_fill = p.widget_active;
+    v.widgets.active.bg_stroke = egui::Stroke::new(1.0, p.accent);
+    // Open menus / combo boxes use the same surfaces as the rest of the chrome.
+    v.widgets.open.weak_bg_fill = p.widget_hover;
+    v.widgets.open.bg_fill = p.widget_hover;
+    v.widgets.open.bg_stroke = egui::Stroke::new(1.0, p.line);
 
-    ctx.set_visuals(v);
+    if dark {
+        // egui's dark shadow is invisible against a dark desktop; a hairline
+        // keeps the panel and its popups outlined instead.
+        v.window_stroke = egui::Stroke::new(1.0, p.line);
+    }
+    v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// WCAG relative luminance.
+    fn luminance(c: Color32) -> f64 {
+        let channel = |v: u8| {
+            let s = v as f64 / 255.0;
+            if s <= 0.039_28 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
+    }
+
+    fn contrast(a: Color32, b: Color32) -> f64 {
+        let (la, lb) = (luminance(a), luminance(b));
+        let (hi, lo) = if la > lb { (la, lb) } else { (lb, la) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    #[test]
+    fn both_themes_keep_text_readable() {
+        for (name, p) in [("light", &LIGHT), ("dark", &DARK)] {
+            assert!(
+                contrast(p.text, p.bg) >= 7.0,
+                "{name}: body text {:.1}:1",
+                contrast(p.text, p.bg)
+            );
+            assert!(contrast(p.text, p.card) >= 7.0, "{name}: text on card");
+            assert!(
+                contrast(p.text_weak, p.card) >= 4.5,
+                "{name}: secondary text {:.1}:1",
+                contrast(p.text_weak, p.card)
+            );
+            assert!(
+                contrast(p.text_faint, p.card) >= 3.0,
+                "{name}: captions {:.1}:1",
+                contrast(p.text_faint, p.card)
+            );
+            assert!(
+                contrast(p.accent, p.card) >= 3.0,
+                "{name}: accent {:.1}:1",
+                contrast(p.accent, p.card)
+            );
+            assert!(
+                contrast(p.ok, p.card) >= 3.5,
+                "{name}: ok status {:.1}:1",
+                contrast(p.ok, p.card)
+            );
+            assert!(
+                contrast(p.warn, p.card) >= 3.5,
+                "{name}: warn status {:.1}:1",
+                contrast(p.warn, p.card)
+            );
+        }
+    }
+
+    #[test]
+    fn theme_preference_round_trips() {
+        assert_eq!(Preference::parse("light"), Preference::Light);
+        assert_eq!(Preference::parse(" Dark "), Preference::Dark);
+        assert_eq!(Preference::parse("SYSTEM"), Preference::System);
+        assert_eq!(Preference::parse("nonsense"), Preference::System);
+        assert_eq!(Preference::parse(""), Preference::System);
+        for pref in [Preference::System, Preference::Light, Preference::Dark] {
+            assert_eq!(Preference::parse(pref.key()), pref);
+            assert!(!pref.label().is_empty());
+        }
+        assert_eq!(Preference::default(), Preference::System);
+    }
+
+    #[test]
+    fn themes_are_not_the_same_palette() {
+        assert_ne!(LIGHT.bg, DARK.bg);
+        assert_ne!(LIGHT.card, DARK.card);
+        // Dark chrome must be darker than light chrome, not just different.
+        assert!(luminance(DARK.bg) < luminance(LIGHT.bg));
+        assert!(luminance(DARK.text) > luminance(LIGHT.text));
+    }
 }

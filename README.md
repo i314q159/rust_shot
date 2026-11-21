@@ -8,7 +8,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/i314q159/rust_shot)
 [![Rust](https://img.shields.io/badge/rust-edition%202024-CE412B?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE-MIT.md)
-[![Size](https://img.shields.io/badge/exe-7.2%20MB-lightgrey?style=flat-square)](#下载)
+[![Size](https://img.shields.io/badge/exe-7.4%20MB-lightgrey?style=flat-square)](#下载)
 [![Runtime](https://img.shields.io/badge/runtime-none-success?style=flat-square)](#下载)
 [![Offline](https://img.shields.io/badge/network-not%20required-success?style=flat-square)](#已知限制)
 
@@ -45,7 +45,7 @@
 
 ## 特性
 
-**截图** — `F1` 拖选，松手后仍可拖四角 / 四边微调或整体移动；不拖动直接单击则拾取光标下的窗口（DWM 真实边框，不含阴影）；`F2` 整屏直送剪贴板。Per-Monitor V2，多显示器 / 高 DPI 下按光标所在屏幕冻结，1:1 物理像素。
+**截图** — `F1` 拖选，松手后仍可拖四角 / 四边微调或整体移动；不拖动直接单击则拾取光标下的窗口（DWM 真实边框，不含阴影）；`F2` 整屏截图并直接进入同一套标注工具（默认已选整屏，回车即复制，也可拖选缩小范围）。Per-Monitor V2，多显示器 / 高 DPI 下按光标所在屏幕冻结，1:1 物理像素。
 
 **标注** — 快捷键 `1`–`7` 切工具，预览和导出共用同一套几何，所见即所得。
 
@@ -63,13 +63,17 @@
 
 **输出** — `Enter` / `Ctrl+C` 复制到剪贴板（可选同时存 PNG）；`Ctrl+S` 另存为，同名文件自动追加 `_1` / `_2` 不覆盖；`Esc` / 右键取消。
 
-**常驻** — 点 × 默认隐藏到托盘（窗口移到屏幕外并退出任务栏，不会残留在 Alt+Tab 里）；托盘左键直接截图，右键菜单切换区域 / 全屏 / 主面板 / 退出；单实例，重复启动会把请求转给已运行的实例。
+**常驻** — 直接启动（双击 / 开始菜单 / 开机自启）就是托盘应用：窗口在第一帧之前就移出屏幕，桌面不会闪出面板，F1 / F2 随时可用；要看面板用 `--panel` 或托盘右键「显示主面板」。点 × 也是隐藏到托盘（窗口移到屏幕外并退出任务栏，不会残留在 Alt+Tab 里）；托盘左键直接截图，右键菜单切换区域 / 全屏 / 主面板 / 退出；单实例，重复启动不会重复弹窗。
+
+**检查更新** — 顶部 `帮助 → 检查更新` 读取 GitHub 的 release 发布页，和当前版本号比较：发现新版本时弹窗列出发布说明，一键打开发布页下载；已是最新则直接提示。菜单栏右上角会出现 `可更新 vX.Y.Z` 标记，点开即可回看。只在点击时联网，不后台轮询；`api.github.com` 访问不了时自动改用发布页重定向兜底。
+
+**主题** — 顶部 `主题` 菜单切换 `跟随系统 / 浅色 / 深色`，默认跟随 Windows 的浅色/深色设置：改系统设置时面板和截图工具栏一起变色，不用重启。手动选定的主题会写进 `config.txt`，固定使用、不再跟随系统。
 
 **为什么不用 Snipaste / 系统截图**
 
 | | RustShot | 系统截图 | Snipaste |
 | --- | --- | --- | --- |
-| 体积 | 单文件 7.2 MB | 内置 | 安装包 + 依赖 |
+| 体积 | 单文件 7.4 MB | 内置 | 安装包 + 依赖 |
 | 标注 | 6 种 + 序号 + 马赛克 | 基础画笔 | 齐全（含贴图、取色） |
 | 便携配置 | `config.txt` 跟 exe 走 | — | 部分可配 |
 | 贴图 / OCR / 滚动长截图 | 不做 | 不做 | 贴图有，OCR 无 |
@@ -139,7 +143,7 @@ F1 → 框选 → 6 用马赛克笔刷涂掉姓名 / 手机号 / 内网地址 �
 | 热键 | 动作 |
 | --- | --- |
 | `F1` | 区域截图 |
-| `F2` | 全屏截图到剪贴板 |
+| `F2` | 整屏截图并进入标注（默认全选，回车复制） |
 | `Ctrl+Alt+S` | 区域截图（备用，避免 `F1` 被其它软件占用） |
 | `Ctrl+Alt+Q` | 退出 |
 
@@ -158,7 +162,7 @@ F1 → 框选 → 6 用马赛克笔刷涂掉姓名 / 手机号 / 内网地址 �
 | 程序 | `C:\Program Files\RustShot\`（所有用户可用） |
 | 开始菜单 | `RustShot`、`卸载 RustShot` |
 | 桌面图标 | 安装时勾选 |
-| 开机自启 | 安装时勾选，写 `HKLM\…\Run`，参数 `--tray`（静默常驻托盘，不弹面板） |
+| 开机自启 | 安装时勾选，写 `HKLM\…\Run`，参数 `--tray`（静默常驻托盘，不弹面板；与双击启动行为一致） |
 | 命令行 | 安装时勾选，安装目录加入系统 `PATH`，任意目录可 `rust_shot` |
 | 卸载 | 设置 → 应用 → RustShot，或开始菜单「卸载 RustShot」 |
 
@@ -177,30 +181,33 @@ F1 → 框选 → 6 用马赛克笔刷涂掉姓名 / 手机号 / 内网地址 �
 ## 命令行
 
 ```powershell
-rust_shot.exe                 启动主面板
+rust_shot.exe                 启动后常驻托盘，不弹面板（已在运行则静默退出）
+rust_shot.exe --panel, --show  启动并显示主面板（已有实例则唤出它的面板）
 rust_shot.exe --capture, -c   立即区域截图（已有实例则转发给它）
-rust_shot.exe --full, -f      立即全屏截图到剪贴板
-rust_shot.exe --tray, --silent  启动后常驻托盘，不弹面板（开机自启用）
+rust_shot.exe --full, -f      立即全屏截图到剪贴板（不进标注界面，便于脚本调用）
+rust_shot.exe --tray, --silent  与无参数相同，开机自启用
 rust_shot.exe --selftest a.png  离屏渲染一张测试图并退出（校核导出管线）
 rust_shot.exe --help, -h      用法说明
 ```
 
 ## 配置
 
-设置写在**程序同目录的 `config.txt`**，两行键值对，用记事本就能改：
+设置写在**程序同目录的 `config.txt`**，三行键值对，用记事本就能改：
 
 ```ini
 # RustShot 配置（保存后重启生效；save_dir 支持 %USERPROFILE% 这类环境变量）
 save_dir=%USERPROFILE%\Pictures\RustShot
 auto_save=true
+theme=system
 ```
 
 | 键 | 说明 |
 | --- | --- |
 | `save_dir` | 保存目录，支持 `%USERPROFILE%`、`%TEMP%` 等环境变量 |
 | `auto_save` | 复制到剪贴板时是否同时存 PNG（`true` / `false`） |
+| `theme` | 界面主题：`system` 跟随 Windows / `light` 浅色 / `dark` 深色，和顶部「主题」菜单是同一个开关 |
 
-面板上的 `更改` / `重置` 会立刻写回配置文件；旧版本存放在 `%LOCALAPPDATA%\RustShot\config.txt` 的设置，首次启动时自动迁移。
+面板上的 `更改` / `重置` 与顶部「主题」菜单会立刻写回配置文件；旧版本存放在 `%LOCALAPPDATA%\RustShot\config.txt` 的设置，首次启动时自动迁移。
 
 诊断日志：`%LOCALAPPDATA%\RustShot\rustshot.log`（只记启动、异常和 panic）。
 
@@ -239,7 +246,7 @@ RustShot-Setup-0.1.1.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 ```powershell
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
-cargo test          # 25 项：箭头几何、序号对比色、选区夹取、控制点命中、配置读写/环境变量、六种标注导出绘制
+cargo test          # 42 项：箭头几何、序号对比色、选区夹取、控制点命中、配置读写/环境变量、六种标注导出绘制
 ```
 
 ## 实现要点
@@ -253,6 +260,8 @@ cargo test          # 25 项：箭头几何、序号对比色、选区夹取、�
 | 标注预览 | egui `Painter` 画矩形/箭头/画笔/马赛克块，文字用 `TextEdit` 以支持输入法 |
 | 导出合成 | `tiny-skia` 画矢量（抗锯齿），`fontdue` 栅格化文字，合成进裁剪后的 RGBA |
 | 热键 / 托盘 / 单实例 | 独立线程跑隐藏消息窗口：`RegisterHotKey`、互斥体单实例、托盘菜单事件入队后唤醒 UI |
+| 检查更新 | WinHTTP（系统自带，不加 TLS 依赖）后台线程请求 release，`/releases/latest` 的跳转地址兜底；返回的 JSON 用约 100 行扫描器取字段，不引入 serde |
+| 主题 | 读 `HKCU\…\Themes\Personalize\AppsUseLightTheme` 判断系统深浅色；隐藏的顶层窗口接 `WM_SETTINGCHANGE` 唤醒界面，浅/深两套 palette 一起注册，面板与截图工具栏共用一个颜色来源 |
 | 字体 | 不打包字体：按固定顺序查找系统字体（微软雅黑 → 黑体 → 宋体 → Segoe UI），界面与导出共用同一套字形 |
 | 主面板 | eframe/egui；`logic()` 负责事件（窗口隐藏时也执行），`ui()` 负责绘制与覆盖层视口 |
 | 图标 | `assets/icon/` 下多尺寸 PNG/ICO，窗口与托盘内嵌 PNG，`build.rs` 把 ICO 写进 exe 资源 |
@@ -268,6 +277,7 @@ rust_shot/
 │  ├─ shapes.rs    标注数据模型、egui 预览、tiny-skia/fontdue 导出合成
 │  ├─ capture.rs   GDI 截屏、显示器 / 窗口几何
 │  ├─ worker.rs    热键线程、单实例 IPC
+│  ├─ update.rs    GitHub 发布页更新检查（WinHTTP + 极简 JSON 扫描）
 │  ├─ config.rs    便携配置读写、同名文件避让
 │  ├─ fonts.rs     系统中文字体加载（egui + fontdue 共用）
 │  ├─ win.rs       窗口定位（物理像素）
@@ -293,7 +303,11 @@ rust_shot/
 
 **隐藏到托盘后按热键，面板会不会跳出来？** 不会。隐藏时主面板不是最小化，而是被移到所有屏幕之外并退出任务栏——eframe 仍能从它身上创建截图覆盖层，所以 F1 / F2 / 托盘截图都不会把面板显示出来，也不会抢走焦点。只有你自己在任务栏上手动最小化了面板时，才需要为覆盖层临时恢复它（截图结束自动退回）。
 
-**没做**：滚动长截图、取色器、OCR、贴图。
+**检查更新会自己联网吗？** 不会。只有点「检查更新」时请求一次 GitHub，走系统 WinHTTP（沿用系统代理设置），失败只提示不重试；想升级时点弹窗里的「打开发布页」自己下载安装包。
+
+**双击启动后没看到窗口？** 正常，RustShot 是常驻托盘的工具：启动（含开机自启）不弹面板，窗口在第一帧之前就移出屏幕，直接按 F1 / F2 就能截图。要看主面板：托盘图标右键 →「显示主面板」，或运行 `rust_shot --panel`。已在运行时再启动一次是静默退出，不会多开、也不会抢焦点。
+
+**没做**：滚动长截图、取色器、OCR、贴图、自动静默升级。
 
 **想要另一种标注方式？** 开个 Issue 说说场景，比沉默更有用。
 

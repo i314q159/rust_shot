@@ -15,6 +15,8 @@ pub const DEFAULT_SAVE_DIR_PARAM: &str = r"%USERPROFILE%\Pictures\RustShot";
 pub struct Config {
     pub save_dir: PathBuf,
     pub auto_save: bool,
+    /// Top bar theme choice: system / light / dark.
+    pub theme: crate::theme::Preference,
 }
 
 impl Default for Config {
@@ -22,6 +24,7 @@ impl Default for Config {
         Self {
             save_dir: crate::util::default_save_dir(),
             auto_save: true,
+            theme: crate::theme::Preference::System,
         }
     }
 }
@@ -106,6 +109,7 @@ impl Config {
             match key.trim() {
                 "save_dir" if !value.is_empty() => cfg.save_dir = expand_env(value),
                 "auto_save" => cfg.auto_save = value != "false",
+                "theme" => cfg.theme = crate::theme::Preference::parse(value),
                 _ => {}
             }
         }
@@ -126,8 +130,9 @@ impl Config {
         };
         let body = format!(
             "# RustShot 配置（保存后重启生效；save_dir 支持 %USERPROFILE% 这类环境变量）\n\
-             save_dir={dir}\nauto_save={}\n",
-            self.auto_save
+             save_dir={dir}\nauto_save={}\ntheme={}\n",
+            self.auto_save,
+            self.theme.key()
         );
         let primary = path();
         if let Some(p) = &primary

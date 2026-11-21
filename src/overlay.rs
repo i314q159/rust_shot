@@ -113,6 +113,9 @@ pub struct Session {
     /// Physical pixels per point, per axis (a stretched window warps them).
     rx: f32,
     ry: f32,
+    /// A drag inside the preset selection re-selects a region instead of moving
+    /// it: F2 preselects the whole screen, and moving that around is useless.
+    repick: bool,
     /// Measured toolbar size from the previous frame (for clamping).
     toolbar_w: f32,
     toolbar_h: f32,
@@ -154,12 +157,15 @@ fn hit_handle(sel: egui::Rect, p: egui::Pos2, tol: f32) -> Option<usize> {
 }
 
 impl Session {
+    /// `full_frame` preselects the whole frame (F2): the overlay opens ready to
+    /// annotate or save the full screen, and a drag re-selects a region.
     pub fn new(
         frame: Arc<Frame>,
         monitor: PhysRect,
         title: String,
         tool: Tool,
         hover: Option<PhysRect>,
+        full_frame: bool,
     ) -> Self {
         let hover = hover.and_then(|h| {
             let r = egui::Rect::from_min_size(
@@ -177,12 +183,16 @@ impl Session {
                 None
             }
         });
+        // F2 starts with everything selected so Enter copies the full screen.
+        let full_sel = full_frame.then(|| {
+            egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(frame.w as f32, frame.h as f32))
+        });
         Self {
             frame,
             monitor,
             title,
             tex: None,
-            sel: None,
+            sel: full_sel,
             anchor: None,
             tool,
             color: PALETTE[0],
@@ -197,6 +207,7 @@ impl Session {
             fix_tries: 0,
             rx: 1.0,
             ry: 1.0,
+            repick: full_frame,
             toolbar_w: 620.0,
             toolbar_h: 44.0,
             outcome: None,
@@ -228,18 +239,18 @@ impl Session {
         }
 
         // Pin the OS window to the monitor using device pixels, no DPI math.
+        // Painting must not wait for this: an unpainted overlay is a black
+        // window, and a couple of black frames read as a "flash" before the
+        // frozen image shows up.
         if self.fix_tries < 8 {
             let ok = crate::win::force_rect_by_title(&self.title, self.monitor);
             self.fix_tries += 1;
             if ok && self.fix_tries > 2 {
                 crate::util::log("overlay geometry pinned");
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                ctx.request_repaint();
                 self.fix_tries = 8;
-                return;
             }
             ctx.request_repaint();
-            return;
         }
         if screen.width() < 8.0 || screen.height() < 8.0 {
             ctx.request_repaint();
@@ -479,16 +490,16 @@ impl Session {
             pos.y = r.top() + 6.0;
         }
         let galley =
-            painter.layout_no_wrap(text, egui::FontId::proportional(12.5), crate::theme::TEXT);
+            painter.layout_no_wrap(text, egui::FontId::proportional(12.5), crate::theme::text());
         let bg = egui::Rect::from_min_size(pos, galley.size() + egui::vec2(10.0, 4.0));
-        painter.rect_filled(bg, 4.0, crate::theme::CARD);
+        painter.rect_filled(bg, 4.0, crate::theme::card());
         painter.rect_stroke(
             bg,
             4.0,
-            egui::Stroke::new(1.0, crate::theme::LINE),
+            egui::Stroke::new(1.0, crate::theme::line()),
             egui::StrokeKind::Outside,
         );
-        painter.galley(pos + egui::vec2(5.0, 2.0), galley, crate::theme::TEXT);
+        painter.galley(pos + egui::vec2(5.0, 2.0), galley, crate::theme::text());
     }
 
     // -----------------------------------------------------------------
@@ -508,6 +519,12 @@ impl Session {
             }
             if sel.contains(p) {
                 match self.tool {
+                    // F2 opened with the whole screen selected: let the user drag
+                    // out a smaller region instead of shoving the frame around.
+                    Tool::Select if self.repick => {
+                        self.repick = false;
+                        self.begin_selection(p);
+                    }
                     Tool::Select => {
                         self.drag = Drag::Move {
                             start: p,
@@ -532,6 +549,11 @@ impl Session {
         if self.sel.is_some() && self.tool != Tool::Select {
             return;
         }
+        self.begin_selection(p);
+    }
+
+    /// Start a fresh selection with `p` as the anchor.
+    fn begin_selection(&mut self, p: egui::Pos2) {
         let p = egui::pos2(
             p.x.clamp(0.0, self.frame.w as f32),
             p.y.clamp(0.0, self.frame.h as f32),
@@ -844,7 +866,7 @@ impl Session {
         // versa); a fixed white box would swallow the white swatch.
         let editing = match shapes.get(idx) {
             Some(Shape::Text { color, .. }) => *color,
-            _ => crate::theme::TEXT,
+            _ => crate::theme::text(),
         };
         let box_fill = if is_bright(editing) {
             egui::Color32::from_black_alpha(200)
@@ -857,7 +879,7 @@ impl Session {
             .show(ctx, |ui| {
                 egui::Frame::NONE
                     .fill(box_fill)
-                    .stroke(egui::Stroke::new(1.0, crate::theme::ACCENT))
+                    .stroke(egui::Stroke::new(1.0, crate::theme::accent()))
                     .corner_radius(3.0)
                     .inner_margin(egui::Margin::symmetric(4, 2))
                     .show(ui, |ui| {
@@ -916,8 +938,8 @@ impl Session {
             .fixed_pos(egui::pos2(x, y))
             .show(ctx, |ui| {
                 egui::Frame::NONE
-                    .fill(crate::theme::CARD)
-                    .stroke(egui::Stroke::new(1.0, crate::theme::LINE))
+                    .fill(crate::theme::card())
+                    .stroke(egui::Stroke::new(1.0, crate::theme::line()))
                     .corner_radius(9.0)
                     .inner_margin(egui::Margin::symmetric(8, 6))
                     .shadow(egui::epaint::Shadow {
@@ -968,7 +990,7 @@ impl Session {
                                     ui.painter().rect_stroke(
                                         rect.expand(2.0),
                                         6.0,
-                                        egui::Stroke::new(1.5, crate::theme::TEXT),
+                                        egui::Stroke::new(1.5, crate::theme::text()),
                                         egui::StrokeKind::Outside,
                                     );
                                 }
@@ -979,10 +1001,7 @@ impl Session {
                                     ui.painter().rect_stroke(
                                         rect.expand(1.0),
                                         6.0,
-                                        egui::Stroke::new(
-                                            1.0,
-                                            egui::Color32::from_rgb(0xA8, 0xB0, 0xBC),
-                                        ),
+                                        egui::Stroke::new(1.0, crate::theme::text_faint()),
                                         egui::StrokeKind::Outside,
                                     );
                                 }
@@ -1050,13 +1069,17 @@ impl Session {
         if let Some(idx) = pick.iter().position(|p| *p) {
             self.tool = Tool::all()[idx];
         }
+        // Ctrl+C never arrives as a key event: egui-winit turns the clipboard
+        // shortcut into `Event::Copy`, so listen for that instead.
+        let copy = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)));
+        if copy {
+            self.export(Export::Copy);
+            return;
+        }
         let cmd = ctx.input(|i| i.modifiers.command);
         if cmd {
             if ctx.input(|i| i.key_pressed(egui::Key::Z)) {
                 self.shapes.pop();
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::C)) {
-                self.export(Export::Copy);
             }
             if ctx.input(|i| i.key_pressed(egui::Key::S)) {
                 self.export(Export::Save);
@@ -1139,5 +1162,67 @@ mod tests {
         labels.sort_unstable();
         labels.dedup();
         assert_eq!(labels.len(), Tool::all().len());
+    }
+}
+
+#[cfg(test)]
+mod full_frame_tests {
+    use super::*;
+
+    fn tiny_frame(w: u32, h: u32) -> Arc<Frame> {
+        Arc::new(Frame {
+            w,
+            h,
+            rgba: vec![0; (w * h * 4) as usize],
+            origin: PhysRect::new(0, 0, w as i32, h as i32),
+        })
+    }
+
+    fn session(full: bool) -> Session {
+        Session::new(
+            tiny_frame(400, 300),
+            PhysRect::new(0, 0, 400, 300),
+            "test".to_owned(),
+            Tool::Select,
+            None,
+            full,
+        )
+    }
+
+    #[test]
+    fn plain_capture_starts_without_a_selection() {
+        assert!(session(false).sel.is_none());
+    }
+
+    #[test]
+    fn full_capture_preselects_the_whole_frame() {
+        let s = session(true);
+        assert_eq!(
+            s.sel,
+            Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(400.0, 300.0)
+            ))
+        );
+    }
+
+    #[test]
+    fn drag_inside_a_preset_selection_narrows_it_instead_of_moving_it() {
+        let mut s = session(true);
+        s.on_press(egui::pos2(100.0, 100.0));
+        assert!(
+            matches!(s.drag, Drag::Select),
+            "should re-select: {:?}",
+            s.drag
+        );
+        s.on_drag(egui::pos2(300.0, 250.0));
+        s.on_release();
+        let sel = s.sel.expect("selection");
+        assert_eq!(sel.min, egui::pos2(100.0, 100.0));
+        assert_eq!(sel.size(), egui::vec2(200.0, 150.0));
+
+        // Once narrowed down, dragging inside moves it like a normal selection.
+        s.on_press(egui::pos2(200.0, 175.0));
+        assert!(matches!(s.drag, Drag::Move { .. }));
     }
 }

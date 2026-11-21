@@ -14,13 +14,15 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowW, GetMessageW, HWND_MESSAGE, MSG,
     PostMessageW, RegisterClassW, RegisterWindowMessageW, TranslateMessage, WINDOW_STYLE,
-    WM_HOTKEY, WNDCLASSW,
+    WM_HOTKEY, WNDCLASSW, WS_POPUP,
 };
 use windows::core::PCWSTR;
 
 use crate::util::wide;
 
 pub const WORKER_CLASS: &str = "RustShotWorkerWnd";
+/// Hidden top-level window that hears the system-wide `WM_SETTINGCHANGE`.
+pub const THEME_CLASS: &str = "RustShotThemeWnd";
 
 /// Commands sent to the running instance by a second process.
 pub const CMD_REGION: usize = 1;
@@ -30,8 +32,13 @@ pub const CMD_PANEL: usize = 4;
 #[derive(Clone, Copy, Debug)]
 pub enum WorkerEvent {
     CaptureRegion,
+    /// Full screen straight to the clipboard (CLI `--full`).
     CaptureFull,
+    /// Full screen through the overlay, whole frame preselected (F2).
+    CaptureFullOverlay,
     ShowPanel,
+    /// The OS light/dark setting may have changed.
+    ThemeChanged,
     Quit,
 }
 
@@ -126,6 +133,32 @@ fn worker_thread(ready: Sender<isize>) {
             }
         };
 
+        // A message-only window never receives broadcast messages, so watching
+        // the OS light/dark switch needs a real — but never shown — top-level
+        // window.
+        let theme_class = wide(THEME_CLASS);
+        let theme_wc = WNDCLASSW {
+            lpfnWndProc: Some(theme_wndproc),
+            hInstance: hinst.into(),
+            lpszClassName: PCWSTR(theme_class.as_ptr()),
+            ..Default::default()
+        };
+        RegisterClassW(&theme_wc);
+        let _theme_wnd = CreateWindowExW(
+            Default::default(),
+            PCWSTR(theme_class.as_ptr()),
+            PCWSTR(theme_class.as_ptr()),
+            WS_POPUP,
+            0,
+            0,
+            0,
+            0,
+            None,
+            None,
+            Some(hinst.into()),
+            None,
+        );
+
         // Global hotkeys.
         let _ = RegisterHotKey(Some(hwnd), 1, MOD_NOREPEAT, VK_F1.0 as u32);
         let _ = RegisterHotKey(Some(hwnd), 2, MOD_NOREPEAT, VK_F2.0 as u32);
@@ -171,7 +204,7 @@ unsafe extern "system" fn worker_wndproc(
         WM_HOTKEY => {
             match wparam.0 {
                 1 => emit(WorkerEvent::CaptureRegion),
-                2 => emit(WorkerEvent::CaptureFull),
+                2 => emit(WorkerEvent::CaptureFullOverlay),
                 4 => emit(WorkerEvent::CaptureRegion),
                 5 => emit(WorkerEvent::Quit),
                 _ => {}
@@ -189,6 +222,23 @@ unsafe extern "system" fn worker_wndproc(
         }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),
     }
+}
+
+unsafe extern "system" fn theme_wndproc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    /// Broadcast whenever the user changes colours, metrics or the theme.
+    const WM_SETTINGCHANGE: u32 = 0x001A;
+    if msg == WM_SETTINGCHANGE {
+        // Sent for many unrelated settings too; the app re-reads the value and
+        // ignores the ones that did not change the theme.
+        emit(WorkerEvent::ThemeChanged);
+        return LRESULT(0);
+    }
+    DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
 /// Handle of our own single-instance mutex, kept until the process exits.

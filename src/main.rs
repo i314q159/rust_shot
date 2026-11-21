@@ -24,14 +24,16 @@ fn main() {
     ));
 
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let mut start = app::Start::Panel;
+    // `None` = no flag given: a plain launch parks itself in the tray.
+    let mut requested: Option<app::Start> = None;
     let mut selftest: Option<String> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--capture" | "-c" => start = app::Start::Region,
-            "--full" | "-f" => start = app::Start::Full,
-            "--tray" | "--silent" => start = app::Start::Tray,
+            "--panel" | "--show" => requested = Some(app::Start::Panel),
+            "--capture" | "-c" => requested = Some(app::Start::Region),
+            "--full" | "-f" => requested = Some(app::Start::Full),
+            "--tray" | "--silent" => requested = Some(app::Start::Tray),
             "--selftest" => {
                 selftest = Some(
                     args.get(i + 1)
@@ -54,20 +56,16 @@ fn main() {
         return;
     }
 
-    // Single instance: hand the request to the running process.
     let already = worker::instance_exists();
-    if already {
-        let cmd = match start {
-            // Autostart must stay silent when the tool is already resident.
-            app::Start::Tray => return,
-            app::Start::Region => worker::CMD_REGION,
-            app::Start::Full => worker::CMD_FULL,
-            app::Start::Panel => worker::CMD_PANEL,
-        };
-        if worker::forward_to_running(cmd) {
-            return;
-        }
+    let (start, forward) = resolve_launch(requested, already);
+    if let Some(cmd) = forward
+        && worker::forward_to_running(cmd)
+    {
+        return;
     }
+    let Some(start) = start else {
+        return;
+    };
 
     let icon = app::app_icon(64);
     let options = eframe::NativeOptions {
@@ -88,16 +86,37 @@ fn main() {
     util::log("app loop finished");
 }
 
+/// What this process should do, given its flags and the single-instance state.
+///
+/// `None` as the start mode means "exit quietly".
+fn resolve_launch(
+    requested: Option<app::Start>,
+    already_running: bool,
+) -> (Option<app::Start>, Option<usize>) {
+    match (requested, already_running) {
+        // A plain launch (double click, shortcut, autostart) is a tray app: the
+        // resident copy is already there, so stay quiet instead of stealing focus.
+        (None, true) | (Some(app::Start::Tray), true) => (None, None),
+        (None, false) | (Some(app::Start::Tray), false) => (Some(app::Start::Tray), None),
+        // Explicit window request: hand it to the running instance.
+        (Some(app::Start::Panel), true) => (None, Some(worker::CMD_PANEL)),
+        (Some(app::Start::Region), true) => (None, Some(worker::CMD_REGION)),
+        (Some(app::Start::Full), true) => (None, Some(worker::CMD_FULL)),
+        (Some(start), false) => (Some(start), None),
+    }
+}
+
 /// `--help` must be visible in a GUI-subsystem build, where stdout goes nowhere.
 fn show_help() {
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK, MessageBoxW};
     use windows::core::PCWSTR;
     let text = util::wide(
         "RustShot\n\n\
-         无参数            启动主面板\n\
+         无参数            启动后常驻托盘（不弹主面板；已在运行则静默退出）\n\
+         --panel, --show   启动并显示主面板\n\
          --capture, -c     立即区域截图\n\
          --full, -f        立即全屏截图到剪贴板\n\
-         --tray, --silent  启动后常驻托盘，不弹出主面板（开机自启用）\n\
+         --tray, --silent  同“无参数”，开机自启用\n\
          --selftest <png>  离屏渲染一张测试图并退出\n\n\
          全局热键：F1 区域截图 · F2 全屏 · Ctrl+Alt+Q 退出",
     );
@@ -211,4 +230,41 @@ fn demo_shapes(frame: &capture::Frame, sel: PhysRect) -> Vec<shapes::Shape> {
             size: 28.0,
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plain_launch_parks_in_the_tray() {
+        assert_eq!(resolve_launch(None, false), (Some(app::Start::Tray), None));
+        // Already resident: a second double click must not steal focus.
+        assert_eq!(resolve_launch(None, true), (None, None));
+        assert_eq!(resolve_launch(Some(app::Start::Tray), true), (None, None));
+        assert_eq!(
+            resolve_launch(Some(app::Start::Tray), false),
+            (Some(app::Start::Tray), None)
+        );
+    }
+
+    #[test]
+    fn explicit_window_requests_reach_the_running_instance() {
+        assert_eq!(
+            resolve_launch(Some(app::Start::Panel), true),
+            (None, Some(worker::CMD_PANEL))
+        );
+        assert_eq!(
+            resolve_launch(Some(app::Start::Panel), false),
+            (Some(app::Start::Panel), None)
+        );
+        assert_eq!(
+            resolve_launch(Some(app::Start::Region), true),
+            (None, Some(worker::CMD_REGION))
+        );
+        assert_eq!(
+            resolve_launch(Some(app::Start::Full), true),
+            (None, Some(worker::CMD_FULL))
+        );
+    }
 }

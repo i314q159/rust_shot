@@ -86,6 +86,8 @@ pub struct App {
     tray_events: Arc<Mutex<Vec<tray_icon::TrayIconEvent>>>,
     /// Help → 开源声明 window is open.
     show_license: bool,
+    /// Top bar theme choice (system / light / dark), persisted in config.txt.
+    theme_pref: crate::theme::Preference,
     /// Latest GitHub update check result shown in the panel / dialog.
     update: UpdateStatus,
     /// Set while the update request runs on its own thread.
@@ -98,7 +100,14 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, start: Start) -> Self {
         let _ = UI_CTX.set(cc.egui_ctx.clone());
         crate::fonts::install_egui_font(&cc.egui_ctx);
-        crate::theme::apply(&cc.egui_ctx);
+        let cfg = crate::config::Config::load();
+        let dark = crate::theme::resolve(cfg.theme);
+        crate::theme::apply(&cc.egui_ctx, dark);
+        crate::util::log(&format!(
+            "theme -> {} ({})",
+            if dark { "dark" } else { "light" },
+            cfg.theme.key()
+        ));
         cc.egui_ctx.all_styles_mut(|style| {
             style.spacing.item_spacing = egui::vec2(8.0, 8.0);
             style.spacing.button_padding = egui::vec2(10.0, 6.0);
@@ -106,8 +115,20 @@ impl App {
 
         let worker = Worker::spawn();
         let (tray, menu) = build_tray();
-        let cfg = crate::config::Config::load();
         crate::util::log(&format!("app created, tray={}", tray.is_some()));
+
+        // Tray start (plain launch / autostart): move the window off screen
+        // before the first frame, so nothing flashes on the desktop.
+        let panel_park = if start == Start::Tray {
+            let parked = crate::win::park_offscreen(PANEL_TITLE);
+            crate::util::log(&format!(
+                "started in tray, parked={}",
+                parked.as_ref().map(|p| p.rect).is_some()
+            ));
+            parked
+        } else {
+            None
+        };
 
         // egui only paints on demand, so a tray click would otherwise sit in the
         // queue until the user happens to hover the panel. Queue the events and
@@ -141,6 +162,7 @@ impl App {
             session: None,
             save_dir: cfg.save_dir,
             auto_save: cfg.auto_save,
+            theme_pref: cfg.theme,
             status: String::new(),
             tray,
             menu,
@@ -150,7 +172,7 @@ impl App {
             restore_frames: 0,
             serial: 0,
             remiminimize: false,
-            panel_park: None,
+            panel_park,
             paint_hidden_sent: false,
             save_rx: None,
             dir_rx: None,
@@ -172,6 +194,39 @@ impl App {
         self.update_rx = Some(update::check_async());
         self.show_update = true;
         self.status = "正在检查更新…".to_owned();
+    }
+
+    /// Re-read the Windows light/dark setting and restyle when it changed.
+    ///
+    /// `WM_SETTINGCHANGE` also fires for unrelated settings, so the value is
+    /// read back and compared before touching the styles.
+    fn refresh_theme(&mut self, ctx: &egui::Context) {
+        // A pinned light/dark choice ignores the OS entirely.
+        if self.theme_pref != crate::theme::Preference::System {
+            return;
+        }
+        let dark = crate::theme::system_is_dark();
+        if dark == crate::theme::is_dark() {
+            return;
+        }
+        crate::theme::apply(ctx, dark);
+        crate::util::log(&format!("theme -> {}", if dark { "dark" } else { "light" }));
+        ctx.request_repaint();
+    }
+
+    /// Top bar choice: remember it, restyle immediately, write it to config.txt.
+    fn set_theme(&mut self, ctx: &egui::Context, pref: crate::theme::Preference) {
+        self.theme_pref = pref;
+        let dark = crate::theme::resolve(pref);
+        crate::theme::apply(ctx, dark);
+        self.persist();
+        crate::util::log(&format!(
+            "theme pref -> {} ({})",
+            pref.key(),
+            if dark { "dark" } else { "light" }
+        ));
+        self.status = format!("主题：{}", pref.label());
+        ctx.request_repaint();
     }
 
     fn poll_update(&mut self) {
@@ -262,9 +317,11 @@ impl App {
         }
         for ev in events {
             match ev {
-                WorkerEvent::CaptureRegion => self.begin_capture(ctx, Tool::Select),
+                WorkerEvent::CaptureRegion => self.begin_capture(ctx, Tool::Select, false),
                 WorkerEvent::CaptureFull => self.capture_full(),
+                WorkerEvent::CaptureFullOverlay => self.begin_capture(ctx, Tool::Select, true),
                 WorkerEvent::ShowPanel => self.show_panel(ctx),
+                WorkerEvent::ThemeChanged => self.refresh_theme(ctx),
                 WorkerEvent::Quit => {
                     self.quitting = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -337,8 +394,8 @@ impl App {
             }
         }
         match action {
-            Some(0) => self.begin_capture(ctx, Tool::Select),
-            Some(1) => self.capture_full(),
+            Some(0) => self.begin_capture(ctx, Tool::Select, false),
+            Some(1) => self.begin_capture(ctx, Tool::Select, true),
             Some(2) => self.show_panel(ctx),
             Some(3) => {
                 self.quitting = true;
@@ -348,11 +405,19 @@ impl App {
         }
     }
 
-    fn begin_capture(&mut self, ctx: &egui::Context, tool: Tool) {
+    /// Freeze the monitor under the pointer and open the annotation overlay.
+    ///
+    /// `full_frame` preselects the whole screen (F2): Enter copies it as-is, the
+    /// tools annotate on top, and a drag narrows it down to a region.
+    fn begin_capture(&mut self, ctx: &egui::Context, tool: Tool, full_frame: bool) {
         let monitor = capture::monitor_at_cursor();
-        let hover = capture::window_rect_at_cursor();
+        let hover = if full_frame {
+            None
+        } else {
+            capture::window_rect_at_cursor()
+        };
         crate::util::log(&format!(
-            "begin_capture tool={tool:?} monitor={monitor:?} hover={hover:?}"
+            "begin_capture tool={tool:?} full={full_frame} monitor={monitor:?} hover={hover:?}"
         ));
         match capture::capture(monitor) {
             Some(frame) => {
@@ -364,6 +429,7 @@ impl App {
                     overlay::overlay_title(self.serial),
                     tool,
                     hover,
+                    full_frame,
                 ));
                 self.status.clear();
                 // eframe cannot create child viewports from a hidden or
@@ -387,6 +453,8 @@ impl App {
         }
     }
 
+    /// --full from the command line: freeze, render the whole monitor and copy
+    /// it, without opening the overlay (scripts have nothing to click).
     fn capture_full(&mut self) {
         let monitor = capture::monitor_at_cursor();
         match capture::capture(monitor) {
@@ -532,6 +600,7 @@ impl App {
         crate::config::Config {
             save_dir: self.save_dir.clone(),
             auto_save: self.auto_save,
+            theme: self.theme_pref,
         }
         .save();
     }
@@ -546,7 +615,7 @@ impl App {
 
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::Frame::NONE
-            .fill(crate::theme::BAR)
+            .fill(crate::theme::bar())
             .inner_margin(egui::Margin::symmetric(10, 3))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -554,11 +623,12 @@ impl App {
                     ui.menu_button("文件", |ui| {
                         if ui.button("区域截图\tF1").clicked() {
                             let ctx = ui.ctx().clone();
-                            self.begin_capture(&ctx, Tool::Select);
+                            self.begin_capture(&ctx, Tool::Select, false);
                             ui.close();
                         }
                         if ui.button("全屏截图\tF2").clicked() {
-                            self.capture_full();
+                            let ctx = ui.ctx().clone();
+                            self.begin_capture(&ctx, Tool::Select, true);
                             ui.close();
                         }
                         ui.separator();
@@ -581,6 +651,30 @@ impl App {
                             ui.close();
                         }
                     });
+                    ui.menu_button("主题", |ui| {
+                        let system_dark = crate::theme::system_is_dark();
+                        for pref in [
+                            crate::theme::Preference::System,
+                            crate::theme::Preference::Light,
+                            crate::theme::Preference::Dark,
+                        ] {
+                            let label = match pref {
+                                crate::theme::Preference::System => format!(
+                                    "跟随系统（当前{}）",
+                                    if system_dark { "深色" } else { "浅色" }
+                                ),
+                                other => other.label().to_owned(),
+                            };
+                            if ui
+                                .selectable_label(self.theme_pref == pref, label)
+                                .clicked()
+                            {
+                                let ctx = ui.ctx().clone();
+                                self.set_theme(&ctx, pref);
+                                ui.close();
+                            }
+                        }
+                    });
                     ui.menu_button("帮助", |ui| {
                         if ui.button("检查更新").clicked() {
                             self.check_update();
@@ -600,14 +694,14 @@ impl App {
                         ui.label(
                             egui::RichText::new(format!("v{APP_VERSION} · MIT"))
                                 .size(10.5)
-                                .color(crate::theme::TEXT_FAINT),
+                                .color(crate::theme::text_faint()),
                         );
                         match self.update.clone() {
                             UpdateStatus::Newer(rel) => {
                                 let badge = egui::Button::new(
                                     egui::RichText::new(format!("可更新 v{}", rel.version))
                                         .size(10.5)
-                                        .color(crate::theme::ACCENT),
+                                        .color(crate::theme::accent()),
                                 )
                                 .frame(false);
                                 if ui.add(badge).on_hover_text("点击查看更新内容").clicked()
@@ -619,7 +713,7 @@ impl App {
                                 ui.label(
                                     egui::RichText::new("检查更新…")
                                         .size(10.5)
-                                        .color(crate::theme::TEXT_FAINT),
+                                        .color(crate::theme::text_faint()),
                                 );
                             }
                             _ => {}
@@ -644,7 +738,7 @@ impl App {
                             "RustShot v{APP_VERSION} · 作者 {APP_AUTHOR} · MIT License"
                         ))
                         .size(12.0)
-                        .color(crate::theme::TEXT_WEAK),
+                        .color(crate::theme::text_weak()),
                     );
                     ui.add_space(6.0);
                     egui::ScrollArea::vertical()
@@ -661,7 +755,7 @@ impl App {
                         ui.label(
                             egui::RichText::new("协议全文：LICENSE-MIT.md")
                                 .size(11.0)
-                                .color(crate::theme::TEXT_FAINT),
+                                .color(crate::theme::text_faint()),
                         );
                     });
                 });
@@ -694,7 +788,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(format!("当前版本 v{APP_VERSION} · 仓库 {}", update::REPO))
                         .size(11.0)
-                        .color(crate::theme::TEXT_FAINT),
+                        .color(crate::theme::text_faint()),
                 );
                 ui.add_space(6.0);
                 match &current {
@@ -713,12 +807,12 @@ impl App {
                         ui.label(
                             egui::RichText::new(format!("已是最新版本（GitHub 最新 v{version}）"))
                                 .size(13.0)
-                                .color(crate::theme::OK),
+                                .color(crate::theme::ok()),
                         );
                         ui.label(
                             egui::RichText::new("有新版本发布时可以在这里直接打开发布页下载。")
                                 .size(11.5)
-                                .color(crate::theme::TEXT_WEAK),
+                                .color(crate::theme::text_weak()),
                         );
                     }
                     UpdateStatus::Newer(rel) => {
@@ -726,7 +820,7 @@ impl App {
                             egui::RichText::new(format!("发现新版本 v{}", rel.version))
                                 .size(15.0)
                                 .strong()
-                                .color(crate::theme::OK),
+                                .color(crate::theme::ok()),
                         );
                         let mut meta = rel.name.clone();
                         if !rel.published.is_empty() {
@@ -740,7 +834,7 @@ impl App {
                             ui.label(
                                 egui::RichText::new(meta)
                                     .size(11.0)
-                                    .color(crate::theme::TEXT_FAINT),
+                                    .color(crate::theme::text_faint()),
                             );
                         }
                         ui.add_space(4.0);
@@ -748,12 +842,12 @@ impl App {
                             ui.label(
                                 egui::RichText::new("该版本没有填写更新说明。")
                                     .size(11.5)
-                                    .color(crate::theme::TEXT_WEAK),
+                                    .color(crate::theme::text_weak()),
                             );
                         } else {
                             egui::Frame::NONE
-                                .fill(egui::Color32::from_rgb(0xF1, 0xF3, 0xF6))
-                                .stroke(egui::Stroke::new(1.0, crate::theme::LINE))
+                                .fill(crate::theme::hint())
+                                .stroke(egui::Stroke::new(1.0, crate::theme::line()))
                                 .corner_radius(6.0)
                                 .inner_margin(egui::Margin::same(8))
                                 .show(ui, |ui| {
@@ -777,17 +871,17 @@ impl App {
                         ui.label(
                             egui::RichText::new("检查更新失败")
                                 .size(13.0)
-                                .color(crate::theme::WARN),
+                                .color(crate::theme::warn()),
                         );
                         ui.label(
                             egui::RichText::new(err)
                                 .size(11.5)
-                                .color(crate::theme::TEXT_WEAK),
+                                .color(crate::theme::text_weak()),
                         );
                         ui.label(
                             egui::RichText::new("也可以直接打开发布页确认最新版本。")
                                 .size(11.0)
-                                .color(crate::theme::TEXT_FAINT),
+                                .color(crate::theme::text_faint()),
                         );
                     }
                 }
@@ -832,7 +926,7 @@ impl App {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::NONE
-                    .fill(crate::theme::BG)
+                    .fill(crate::theme::bg())
                     .inner_margin(egui::Margin::same(18)),
             )
             .show(ui, |ui| {
@@ -841,7 +935,7 @@ impl App {
                     ui.label(
                         egui::RichText::new("截图 · 标注")
                             .size(12.0)
-                            .color(crate::theme::TEXT_FAINT),
+                            .color(crate::theme::text_faint()),
                     );
                 });
                 ui.add_space(10.0);
@@ -850,10 +944,11 @@ impl App {
                 ui.horizontal(|ui| {
                     if big_button(ui, "区域截图", "F1", bw).clicked() {
                         let ctx = ui.ctx().clone();
-                        self.begin_capture(&ctx, Tool::Select);
+                        self.begin_capture(&ctx, Tool::Select, false);
                     }
                     if big_button(ui, "全屏截图", "F2", bw).clicked() {
-                        self.capture_full();
+                        let ctx = ui.ctx().clone();
+                        self.begin_capture(&ctx, Tool::Select, true);
                     }
                 });
 
@@ -861,7 +956,7 @@ impl App {
                 ui.separator();
                 ui.add_space(8.0);
 
-                ui.label(egui::RichText::new("保存目录").size(12.5).color(crate::theme::TEXT_WEAK))
+                ui.label(egui::RichText::new("保存目录").size(12.5).color(crate::theme::text_weak()))
                     .on_hover_text(match crate::config::path() {
                         Some(p) => format!("配置保存在 {}\n可手动编辑 save_dir / auto_save", p.display()),
                         None => "配置保存在程序目录下的 config.txt".to_owned(),
@@ -907,29 +1002,29 @@ impl App {
 
                 ui.add_space(8.0);
                 egui::Frame::NONE
-                    .fill(egui::Color32::from_rgb(0xF1, 0xF3, 0xF6))
-                    .stroke(egui::Stroke::new(1.0, crate::theme::LINE))
+                    .fill(crate::theme::hint())
+                    .stroke(egui::Stroke::new(1.0, crate::theme::line()))
                     .corner_radius(8.0)
                     .inner_margin(egui::Margin::same(10))
                     .show(ui, |ui| {
                         ui.label(
                             egui::RichText::new(
-                                "截图后：拖选区域 · 单击选中窗口 · Enter 复制 · Ctrl+S 另存为",
+                                "截图后：拖选区域 · 单击选中窗口 · Enter / Ctrl+C 复制 · Ctrl+S 另存为",
                             )
                             .size(11.5)
-                            .color(crate::theme::TEXT_WEAK),
+                            .color(crate::theme::text_weak()),
                         );
                         ui.label(
                             egui::RichText::new(
                                 "标注：矩形 / 箭头 / 画笔 / 文字 / 马赛克 / 序号，Ctrl+Z 撤销，Ctrl+A 全选",
                             )
                             .size(11.5)
-                            .color(crate::theme::TEXT_WEAK),
+                            .color(crate::theme::text_weak()),
                         );
                         ui.label(
-                            egui::RichText::new("全局热键：F1 区域截图 · F2 全屏 · Ctrl+Alt+Q 退出")
+                            egui::RichText::new("全局热键：F1 区域截图 · F2 全屏（进标注）· Ctrl+Alt+Q 退出")
                                 .size(11.5)
-                                .color(crate::theme::TEXT_WEAK),
+                                .color(crate::theme::text_weak()),
                         );
                     });
 
@@ -938,7 +1033,7 @@ impl App {
                     ui.label(
                         egui::RichText::new(&self.status)
                             .size(12.0)
-                            .color(crate::theme::OK),
+                            .color(crate::theme::ok()),
                     );
                 }
 
@@ -948,15 +1043,15 @@ impl App {
                             ui.label(
                                 egui::RichText::new("托盘不可用")
                                     .size(11.0)
-                                    .color(crate::theme::WARN),
+                                    .color(crate::theme::warn()),
                             );
                         }
                         ui.label(
                             egui::RichText::new(format!("字体：{}", crate::fonts::cjk().map(|f| f.label.clone()).unwrap_or_else(|| "系统默认".into())))
                                 .size(10.5)
-                                .color(crate::theme::TEXT_FAINT),
+                                .color(crate::theme::text_faint()),
                         );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("退出").clicked() {
                                 self.quitting = true;
                                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -964,32 +1059,6 @@ impl App {
                             if ui.button("隐藏到托盘").clicked() {
                                 let ctx = ui.ctx().clone();
                                 self.hide_to_tray(&ctx);
-                            }
-                            match self.update.clone() {
-                                UpdateStatus::Newer(rel) => {
-                                    if ui
-                                        .button(
-                                            egui::RichText::new(format!("新版本 v{}", rel.version))
-                                                .color(crate::theme::ACCENT),
-                                        )
-                                        .on_hover_text("查看更新说明并打开发布页")
-                                        .clicked()
-                                    {
-                                        self.show_update = true;
-                                    }
-                                }
-                                UpdateStatus::Checking => {
-                                    ui.add_enabled(false, egui::Button::new("检查更新…"));
-                                }
-                                _ => {
-                                    if ui
-                                        .button("检查更新")
-                                        .on_hover_text(format!("从 GitHub 检查 {} 的最新版本", update::REPO))
-                                        .clicked()
-                                    {
-                                        self.check_update();
-                                    }
-                                }
                             }
                         });
                     });
@@ -1101,7 +1170,7 @@ impl eframe::App for App {
         if let Some(start) = self.start.take() {
             match start {
                 Start::Panel => {}
-                Start::Region => self.begin_capture(ctx, Tool::Select),
+                Start::Region => self.begin_capture(ctx, Tool::Select, false),
                 Start::Full => self.capture_full(),
                 Start::Tray => {
                     self.hide_to_tray(ctx);
@@ -1125,8 +1194,14 @@ impl eframe::App for App {
         self.dialogs(&ctx);
     }
 
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        // Matches `theme::BG`, so there is no dark flash while the window resizes.
-        [0.969, 0.973, 0.980, 1.0]
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        // Same colour as the panel, so resizing never flashes the opposite theme.
+        let c = visuals.panel_fill;
+        [
+            c.r() as f32 / 255.0,
+            c.g() as f32 / 255.0,
+            c.b() as f32 / 255.0,
+            1.0,
+        ]
     }
 }
