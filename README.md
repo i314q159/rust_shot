@@ -226,11 +226,20 @@ cargo build --release
 
 ```powershell
 winget install JRSoftware.InnoSetup      # 只需一次
-pwsh -File installer\build.ps1           # cargo build --release + 复制 exe + 编译安装包
+pwsh -File installer\build.ps1           # cargo build --release + 复制 exe + 编译安装包 + 静默安装
 # 产物：outputs\RustShot-Setup-<版本>.exe，同时刷新 outputs\rust_shot.exe
+# 安装日志：outputs\install-<版本>.log
 ```
 
 安装脚本是 `installer\rust_shot.iss`（Inno Setup 6），版本号从 `Cargo.toml` 读取，不手写第二份。安装包固定装到 `C:\Program Files\RustShot`，界面为中文四页：欢迎 → 附加设置 → 安装 → 完成。
+
+`build.ps1` 默认在打包完成后立刻安装这次编出来的 `RustShot-Setup-<版本>.exe`（静默、不重启；非管理员会话弹一次 UAC）。若 RustShot 正在运行，脚本先尝试正常关闭，必要时强制结束，避免被安装包的占用检测拦住；装完再读卸载注册表里的版本号校验。
+
+| 参数 | 作用 |
+| --- | --- |
+| `-NoInstall` | 只编译打包，不安装 |
+| `-Interactive` | 安装时显示进度界面（默认完全静默） |
+| `-KeepAppRunning` | 不自动关闭正在运行的 RustShot，脚本直接报错提醒先退出 |
 
 无人值守安装/卸载（例如分发脚本）：
 
@@ -239,7 +248,7 @@ RustShot-Setup-0.1.1.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 "C:\Program Files\RustShot\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 ```
 
-两者都需要管理员权限；安装包不接受 `/CURRENTUSER`，不会写到 `%LOCALAPPDATA%`。
+`build.ps1` 用的就是第一条命令。两者都需要管理员权限；安装包不接受 `/CURRENTUSER`，不会写到 `%LOCALAPPDATA%`。
 
 ### 测试
 
@@ -288,7 +297,7 @@ rust_shot/
 │  └─ screenshot-overlay.png
 ├─ installer/
 │  ├─ rust_shot.iss   Inno Setup 6 安装脚本（Program Files、快捷方式、PATH、自启、卸载）
-│  └─ build.ps1       一键构建安装包
+│  └─ build.ps1       一键构建、打包并静默安装最新产物
 ├─ build.rs        把 ICO 写入 exe 资源
 ├─ v.txt           最近一次构建的版本号（由 build.ps1 写入，来源是 Cargo.toml）
 ├─ LICENSE-MIT.md
