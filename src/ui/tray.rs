@@ -1,9 +1,9 @@
 use crate::config::i18n::strings;
 use crate::config::i18n::tr;
 
-const ICON_32: &[u8] = include_bytes!("../../assets/icon/rustshot-32.png");
-const ICON_64: &[u8] = include_bytes!("../../assets/icon/rustshot-64.png");
-const ICON_256: &[u8] = include_bytes!("../../assets/icon/rustshot-256.png");
+const ICON_32: &[u8] = include_bytes!("../../assets/tray/rustshot-32.png");
+const ICON_64: &[u8] = include_bytes!("../../assets/tray/rustshot-64.png");
+const ICON_256: &[u8] = include_bytes!("../../assets/tray/rustshot-256.png");
 
 pub(crate) struct MenuHandles {
     pub(crate) region: muda::MenuItem,
