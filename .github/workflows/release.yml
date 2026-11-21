@@ -77,7 +77,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           # 复用仓库里的构建脚本：cargo build --release → outputs\rust_shot.exe → ISCC 编译安装包。
-          pwsh -NoProfile -File installer\build.ps1
+          # CI 只打包，不安装（build.ps1 默认打包后会静默安装）。
+          pwsh -NoProfile -File installer\build.ps1 -NoInstall
           if ($LASTEXITCODE -ne 0) { throw "installer\build.ps1 失败（exit $LASTEXITCODE）" }
           foreach ($f in @('outputs\rust_shot.exe', "outputs\RustShot-Setup-$env:VERSION.exe")) {
             if (-not (Test-Path -LiteralPath $f)) { throw "缺少产物：$f" }
@@ -91,7 +92,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $stage = Join-Path $env:RUNNER_TEMP "RustShot-$env:VERSION"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item -LiteralPath 'outputs\rust_shot.exe', 'README.md', 'LICENSE-MIT.md' -Destination $stage
+          Copy-Item -LiteralPath 'outputs\rust_shot.exe', 'README.md', 'README.en.md', 'LICENSE-MIT.md' -Destination $stage
           $zip = "outputs\RustShot-$env:VERSION-portable.zip"
           # -Force 直接覆盖同名 zip，不需要先删文件。
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
@@ -154,7 +155,7 @@ jobs:
             '| 热键 | 动作 |',
             '| --- | --- |',
             '| `F1` | 区域截图（`Ctrl+Alt+S` 备用） |',
-            '| `F2` | 全屏截图到剪贴板 |',
+            '| `F2` | 整屏截图并进入标注（默认全选，回车复制） |',
             '| `Ctrl+Alt+Q` | 退出 |',
             '',
             '截图时：`1`–`7` 切工具、`Ctrl+Z` 撤销、`Enter` / `Ctrl+C` 复制、`Ctrl+S` 保存、`Esc` 取消。',
