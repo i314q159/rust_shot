@@ -113,7 +113,13 @@ impl Config {
             };
             let cfg = Self::parse(&text);
 
-            cfg.save();
+            if !cfg.save() {
+                crate::platform::util::log(&format!(
+                    "config migration: cannot write {CONFIG_FILE}, keeping {}",
+                    old.display()
+                ));
+                return cfg;
+            }
             let backup = old.with_extension("txt.bak");
             if std::fs::rename(&old, &backup).is_ok() {
                 crate::platform::util::log(&format!(
@@ -176,26 +182,39 @@ impl Config {
         )
     }
 
-    pub fn save(&self) {
+    pub fn save(&self) -> bool {
         let body = self.render();
         if let Some(p) = path()
-            && std::fs::write(&p, &body).is_ok()
+            && write_atomic(&p, &body)
         {
-            return;
+            return true;
         }
 
         let fallback = fallback_path();
         if let Some(dir) = fallback.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        match std::fs::write(&fallback, body) {
-            Ok(()) => crate::platform::util::log(&format!(
-                "config saved to fallback {}",
-                fallback.display()
-            )),
-            Err(e) => crate::platform::util::log(&format!("config save failed: {e}")),
+        if write_atomic(&fallback, &body) {
+            crate::platform::util::log(&format!("config saved to fallback {}", fallback.display()));
+            true
+        } else {
+            crate::platform::util::log(&format!("config save failed: {}", fallback.display()));
+            false
         }
     }
+}
+
+fn write_atomic(target: &Path, body: &str) -> bool {
+    let tmp = target.with_extension("toml.tmp");
+    if std::fs::write(&tmp, body).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return false;
+    }
+    if std::fs::rename(&tmp, target).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return false;
+    }
+    true
 }
 
 fn lines_of(text: &str) -> impl Iterator<Item = &str> {

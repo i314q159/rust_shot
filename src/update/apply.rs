@@ -1,8 +1,8 @@
 use crate::config::i18n::strings;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
+use windows::Win32::Foundation::{CloseHandle, ERROR_CANCELLED, GetLastError, HANDLE};
 use windows::Win32::System::Threading::{
     GetExitCodeProcess, OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
 };
@@ -11,6 +11,14 @@ use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 use windows::core::PCWSTR;
 
 use crate::config::i18n::tr1;
+
+const HELPER_NAME: &str = "RustShot-Update.exe";
+
+enum Setup {
+    Done,
+    Cancelled,
+    Failed,
+}
 
 pub fn run(parent_pid: u32, source: &Path, app: &Path) -> ! {
     let exe = app.to_path_buf();
@@ -36,10 +44,19 @@ pub fn run(parent_pid: u32, source: &Path, app: &Path) -> ! {
 
     let installed = crate::update::installed_copy_at(&exe);
     let ok = installed
-        && (run_setup(source) || {
-            std::thread::sleep(Duration::from_secs(3));
-            run_setup(source)
-        });
+        && match run_setup(source) {
+            Setup::Done => true,
+            Setup::Failed => {
+                std::thread::sleep(Duration::from_secs(3));
+                matches!(run_setup(source), Setup::Done)
+            }
+            Setup::Cancelled => {
+                crate::platform::util::log(
+                    "apply update: UAC declined, keeping the current install",
+                );
+                false
+            }
+        };
     crate::platform::util::log(&format!(
         "apply update finished ok={ok} installed={installed}"
     ));
@@ -62,7 +79,7 @@ fn wait_for(pid: u32, timeout: Duration) {
     let _ = unsafe { WaitForSingleObject(handle.0, millis) };
 }
 
-fn run_setup(setup: &Path) -> bool {
+fn run_setup(setup: &Path) -> Setup {
     let verb = crate::platform::util::wide("runas");
     let file = crate::platform::util::wide(&setup.display().to_string());
 
@@ -90,13 +107,16 @@ fn run_setup(setup: &Path) -> bool {
     };
 
     if unsafe { windows::Win32::UI::Shell::ShellExecuteExW(&mut info) }.is_err() {
-        crate::platform::util::log(
-            "apply update: ShellExecuteEx failed (user cancelled or blocked)",
-        );
-        return false;
+        let err = unsafe { GetLastError() };
+        crate::platform::util::log(&format!("apply update: ShellExecuteEx failed ({})", err.0));
+        return if err == ERROR_CANCELLED {
+            Setup::Cancelled
+        } else {
+            Setup::Failed
+        };
     }
     if info.hProcess.is_invalid() {
-        return false;
+        return Setup::Failed;
     }
     let process = Handle(info.hProcess);
 
@@ -104,19 +124,39 @@ fn run_setup(setup: &Path) -> bool {
     let mut code = 0u32;
     let _ = unsafe { GetExitCodeProcess(process.0, &mut code) };
     crate::platform::util::log(&format!("apply update: setup exit code {code}"));
-    code == 0
+    if code == 0 {
+        Setup::Done
+    } else {
+        Setup::Failed
+    }
 }
 
 pub fn spawn_helper(source: &Path) -> Result<(), String> {
     let exe =
         std::env::current_exe().map_err(|e| tr1(strings::CANNOT_LOCATE_THE_RUNNING_PROGRAM, e))?;
-    std::process::Command::new(exe)
+    let helper = helper_copy(&exe)?;
+    std::process::Command::new(helper)
         .arg("--apply-update")
         .arg(std::process::id().to_string())
         .arg(source)
         .spawn()
         .map(|_| ())
         .map_err(|e| tr1(strings::CANNOT_START_THE_UPDATER, e))
+}
+
+fn helper_copy(exe: &Path) -> Result<PathBuf, String> {
+    let dir = crate::update::update_dir();
+    let copied = std::fs::create_dir_all(&dir)
+        .and_then(|_| std::fs::copy(exe, dir.join(HELPER_NAME)).map(|_| ()));
+    match copied {
+        Ok(()) => Ok(dir.join(HELPER_NAME)),
+        Err(e) => {
+            crate::platform::util::log(&format!(
+                "apply update: cannot stage the helper ({e}), running it in place"
+            ));
+            Ok(exe.to_path_buf())
+        }
+    }
 }
 
 struct Handle(HANDLE);
@@ -127,9 +167,4 @@ impl Drop for Handle {
             let _ = unsafe { CloseHandle(self.0) };
         }
     }
-}
-
-#[allow(dead_code)]
-fn is_signalled(code: u32) -> bool {
-    code == WAIT_OBJECT_0.0
 }
