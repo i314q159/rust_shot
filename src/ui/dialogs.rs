@@ -33,23 +33,28 @@ impl App {
                 if self.proxy_mode == 2 {
                     ui.horizontal(|ui| {
                         ui.add_space(22.0);
-                        let edit = ui.add(
-                            egui::TextEdit::singleline(&mut self.proxy_text)
-                                .hint_text(tr(strings::HOST_PORT))
-                                .desired_width(150.0),
+                        ui.label(tr(strings::PROXY_IP));
+                        let host_edit = ui.add(
+                            egui::TextEdit::singleline(&mut self.proxy_host)
+                                .hint_text("127.0.0.1")
+                                .desired_width(110.0),
+                        );
+                        ui.label(tr(strings::PROXY_PORT));
+                        let port_edit = ui.add(
+                            egui::TextEdit::singleline(&mut self.proxy_port)
+                                .hint_text("12334")
+                                .desired_width(56.0),
                         );
                         // Validate on every keystroke, but only write the file
                         // on 保存 / Enter, so a half-typed value never ends up in
                         // config.toml.
-                        if edit.changed() {
-                            self.proxy_bad = !matches!(
-                                crate::config::proxy::Proxy::parse(&self.proxy_text),
-                                crate::config::proxy::Proxy::Manual { .. }
-                            );
+                        let valid = self.manual_proxy().is_some();
+                        if host_edit.changed() || port_edit.changed() {
+                            self.proxy_bad = !valid;
                         }
-                        let can_save = !self.proxy_bad && !self.proxy_text.trim().is_empty();
-                        let enter =
-                            edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        let can_save = !self.proxy_bad && valid;
+                        let enter = (host_edit.lost_focus() || port_edit.lost_focus())
+                            && ui.input(|i| i.key_pressed(egui::Key::Enter));
                         if ui
                             .add_enabled(can_save, egui::Button::new(tr(strings::SAVE)))
                             .clicked()
@@ -57,6 +62,9 @@ impl App {
                         {
                             self.apply_proxy(2);
                         }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.add_space(22.0);
                         ui.label(
                             egui::RichText::new(tr(
                                 strings::TYPE_IT_YOURSELF_ENTER_OR_SAVE_WRITES_CONFIG,

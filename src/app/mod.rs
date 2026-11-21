@@ -116,12 +116,14 @@ pub struct App {
     pub(crate) auto_update: crate::update::AutoUpdate,
     /// `proxy=` from config.toml; kept as loaded so saving other keys keeps it.
     pub(crate) proxy: crate::config::proxy::Proxy,
-    /// Address being edited in the update dialog when the proxy is manual.
-    pub(crate) proxy_text: String,
+    /// IP / host being edited in the proxy dialog when the proxy is manual.
+    pub(crate) proxy_host: String,
+    /// Port being edited in the proxy dialog when the proxy is manual.
+    pub(crate) proxy_port: String,
     /// Dialog selection: 0 system, 1 direct, 2 manual (kept even while the
-    /// typed address is still invalid, otherwise the input box would vanish).
+    /// typed address is still invalid, otherwise the input boxes would vanish).
     pub(crate) proxy_mode: u8,
-    /// The manual address currently typed cannot be parsed.
+    /// The manual IP / port currently typed cannot be parsed.
     pub(crate) proxy_bad: bool,
     /// `帮助 → 网络代理` window is open.
     pub(crate) show_proxy: bool,
@@ -213,7 +215,14 @@ impl App {
             theme_pref: cfg.theme,
             auto_update: cfg.auto_update,
             proxy: cfg.proxy.clone(),
-            proxy_text: cfg.proxy.address().unwrap_or_default(),
+            proxy_host: match &cfg.proxy {
+                crate::config::proxy::Proxy::Manual { host, .. } => host.clone(),
+                _ => String::new(),
+            },
+            proxy_port: match &cfg.proxy {
+                crate::config::proxy::Proxy::Manual { port, .. } => port.to_string(),
+                _ => String::new(),
+            },
             proxy_mode: match cfg.proxy {
                 crate::config::proxy::Proxy::System => 0,
                 crate::config::proxy::Proxy::Direct => 1,
@@ -315,6 +324,24 @@ impl App {
         ctx.request_repaint();
     }
 
+    /// Build a manual proxy from the IP / port boxes, if both are valid.
+    pub(crate) fn manual_proxy(&self) -> Option<crate::config::proxy::Proxy> {
+        let host = self.proxy_host.trim();
+        let port = self
+            .proxy_port
+            .trim()
+            .parse::<u16>()
+            .ok()
+            .filter(|port| *port > 0)?;
+        if host.is_empty() {
+            return None;
+        }
+        Some(crate::config::proxy::Proxy::Manual {
+            host: host.to_owned(),
+            port,
+        })
+    }
+
     /// Commit the proxy picked in the dialog (`0` system, `1` direct, `2` manual)
     /// and write it to config.toml. The next check picks it up.
     pub(crate) fn apply_proxy(&mut self, mode: u8) {
@@ -323,32 +350,34 @@ impl App {
             1 => {
                 self.proxy = crate::config::proxy::Proxy::Direct;
                 self.proxy_bad = false;
-                self.proxy_text.clear();
             }
             2 => {
-                // Keep "manual" selected even when the box is empty or garbage;
-                // only a parseable address is written to config.toml.
-                match crate::config::proxy::Proxy::parse(&self.proxy_text) {
-                    parsed @ crate::config::proxy::Proxy::Manual { .. } => {
-                        self.proxy = parsed;
-                        self.proxy_bad = false;
-                    }
-                    _ => {
-                        self.proxy_bad = true;
-                        self.status =
-                            tr(strings::INVALID_PROXY_ADDRESS_KEEPING_THE_CURRENT_ONE).to_owned();
-                        return;
-                    }
+                // Keep "manual" selected even when a box is empty or garbage;
+                // only a valid IP + port is written to config.toml.
+                if let Some(parsed) = self.manual_proxy() {
+                    self.proxy = parsed;
+                    self.proxy_bad = false;
+                } else {
+                    self.proxy_bad = true;
+                    self.status =
+                        tr(strings::INVALID_PROXY_ADDRESS_KEEPING_THE_CURRENT_ONE).to_owned();
+                    return;
                 }
             }
             _ => {
                 self.proxy = crate::config::proxy::Proxy::System;
                 self.proxy_bad = false;
-                self.proxy_text.clear();
             }
         }
-        if let Some(address) = self.proxy.address() {
-            self.proxy_text = address;
+        match &self.proxy {
+            crate::config::proxy::Proxy::Manual { host, port } => {
+                self.proxy_host = host.clone();
+                self.proxy_port = port.to_string();
+            }
+            _ => {
+                self.proxy_host.clear();
+                self.proxy_port.clear();
+            }
         }
         self.persist();
         crate::platform::util::log(&format!("proxy -> {}", self.proxy.key()));

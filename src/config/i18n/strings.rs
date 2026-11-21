@@ -384,12 +384,16 @@ pub const INVALID_ADDRESS: Text = Text {
     en: "invalid address",
 };
 pub const TYPE_IT_YOURSELF_ENTER_OR_SAVE_WRITES_CONFIG: Text = Text {
-    zh: "自己填写，回车或点保存写入 config.toml",
-    en: "type it yourself, Enter or Save writes config.toml",
+    zh: "填好 IP 和端口，回车或点保存写入 config.toml",
+    en: "enter the IP and port, then press Enter or Save to write config.toml",
 };
-pub const HOST_PORT: Text = Text {
-    zh: "host:port",
-    en: "host:port",
+pub const PROXY_IP: Text = Text {
+    zh: "IP 地址",
+    en: "IP address",
+};
+pub const PROXY_PORT: Text = Text {
+    zh: "端口",
+    en: "Port",
 };
 pub const MANUAL_ADDRESS: Text = Text {
     zh: "手动地址",

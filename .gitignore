@@ -1,6 +1,4 @@
 /target
 /outputs
-/v.txt
-.qoder-input-images/
-docs/
 .workbuddy/
+.qoder-input-images/

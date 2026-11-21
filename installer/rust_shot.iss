@@ -77,9 +77,7 @@ Name: "addtopath"; Description: "{cm:TaskAddToPath}"; GroupDescription: "{cm:Tas
 [Files]
 Source: "..\target\release\rust_shot.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\README.en.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\ACKNOWLEDGEMENTS.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\ACKNOWLEDGEMENTS.en.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE-MIT.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
