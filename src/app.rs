@@ -40,6 +40,26 @@ pub enum Start {
     Full,
     /// Start straight in the tray (used by the installer's autostart entry).
     Tray,
+    /// Tray, then immediately check for updates (`--check-update`).
+    Check,
+}
+
+/// Progress of the silent update (`立即更新` in the update dialog).
+#[derive(Clone, Debug, PartialEq)]
+enum Install {
+    Idle,
+    Downloading { got: u64, total: u64 },
+    Verifying,
+    Launching,
+    Failed(String),
+}
+
+/// Messages from the download/verify thread.
+enum InstallEvent {
+    Progress(u64, u64),
+    Verifying,
+    Failed(String),
+    Done,
 }
 
 /// Result of the (worker thread) save dialog.
@@ -99,6 +119,23 @@ pub struct App {
     update_rx: Option<std::sync::mpsc::Receiver<UpdateStatus>>,
     /// Update dialog is open.
     show_update: bool,
+    /// `auto_update=notice|silent`, persisted in config.txt.
+    auto_update: crate::update::AutoUpdate,
+    /// `proxy=` from config.txt; kept as loaded so saving other keys keeps it.
+    proxy: crate::proxy::Proxy,
+    /// Address being edited in the update dialog when the proxy is manual.
+    proxy_text: String,
+    /// Dialog selection: 0 system, 1 direct, 2 manual (kept even while the
+    /// typed address is still invalid, otherwise the input box would vanish).
+    proxy_mode: u8,
+    /// The manual address currently typed cannot be parsed.
+    proxy_bad: bool,
+    /// `帮助 → 网络代理` window is open.
+    show_proxy: bool,
+    /// Download / verify progress of the silent update.
+    install: Install,
+    /// Set while the update download runs on its own thread.
+    install_rx: Option<std::sync::mpsc::Receiver<InstallEvent>>,
 }
 
 impl App {
@@ -132,7 +169,7 @@ impl App {
 
         // Tray start (plain launch / autostart): move the window off screen
         // before the first frame, so nothing flashes on the desktop.
-        let panel_park = if start == Start::Tray {
+        let panel_park = if matches!(start, Start::Tray | Start::Check) {
             let parked = crate::win::park_offscreen(panel_title());
             crate::util::log(&format!(
                 "started in tray, parked={}",
@@ -176,6 +213,16 @@ impl App {
             save_dir: cfg.save_dir,
             auto_save: cfg.auto_save,
             theme_pref: cfg.theme,
+            auto_update: cfg.auto_update,
+            proxy: cfg.proxy.clone(),
+            proxy_text: cfg.proxy.address().unwrap_or_default(),
+            proxy_mode: match cfg.proxy {
+                crate::proxy::Proxy::System => 0,
+                crate::proxy::Proxy::Direct => 1,
+                crate::proxy::Proxy::Manual { .. } => 2,
+            },
+            proxy_bad: false,
+            show_proxy: false,
             lang_pref: cfg.lang,
             status: String::new(),
             tray,
@@ -196,6 +243,8 @@ impl App {
             update: UpdateStatus::Idle,
             update_rx: None,
             show_update: false,
+            install: Install::Idle,
+            install_rx: None,
         }
     }
 
@@ -268,6 +317,269 @@ impl App {
         ctx.request_repaint();
     }
 
+    /// Small dialog behind `帮助 → 网络代理`: system / direct / manual address.
+    fn proxy_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_proxy {
+            return;
+        }
+        let mut open = true;
+        let mut close = false;
+        egui::Window::new(tr("网络代理", "Proxy"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(360.0)
+            .show(ctx, |ui| {
+                ui.label(
+                    egui::RichText::new(tr(
+                        "只影响检查更新和下载安装包；保存后下一次检查立即生效。",
+                        "Only used by the update check and download; applies to the next check.",
+                    ))
+                    .size(11.0)
+                    .color(crate::theme::text_faint()),
+                );
+                ui.add_space(6.0);
+                let before = self.proxy_mode;
+                let mut mode = self.proxy_mode;
+                ui.radio_value(
+                    &mut mode,
+                    0,
+                    tr(
+                        "系统代理（跟随 Windows 设置）",
+                        "System proxy (follow Windows)",
+                    ),
+                );
+                ui.radio_value(&mut mode, 1, tr("直连（不使用代理）", "Direct (no proxy)"));
+                ui.radio_value(&mut mode, 2, tr("手动地址", "Manual address"));
+                if self.proxy_mode == 2 {
+                    ui.horizontal(|ui| {
+                        ui.add_space(22.0);
+                        let edit = ui.add(
+                            egui::TextEdit::singleline(&mut self.proxy_text)
+                                .hint_text(tr("host:port", "host:port"))
+                                .desired_width(150.0),
+                        );
+                        // Validate on every keystroke, but only write the file
+                        // on 保存 / Enter, so a half-typed value never ends up in
+                        // config.txt.
+                        if edit.changed() {
+                            self.proxy_bad = !matches!(
+                                crate::proxy::Proxy::parse(&self.proxy_text),
+                                crate::proxy::Proxy::Manual { .. }
+                            );
+                        }
+                        let can_save = !self.proxy_bad && !self.proxy_text.trim().is_empty();
+                        let enter =
+                            edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        if ui
+                            .add_enabled(can_save, egui::Button::new(tr("保存", "Save")))
+                            .clicked()
+                            || (can_save && enter)
+                        {
+                            self.apply_proxy(2);
+                        }
+                        ui.label(
+                            egui::RichText::new(tr(
+                                "自己填写，回车或点保存写入 config.txt",
+                                "type it yourself, Enter or Save writes config.txt",
+                            ))
+                            .size(10.5)
+                            .color(crate::theme::text_faint()),
+                        );
+                        if self.proxy_bad {
+                            ui.label(
+                                egui::RichText::new(tr("地址无效", "invalid address"))
+                                    .size(10.5)
+                                    .color(crate::theme::warn()),
+                            );
+                        }
+                    });
+                }
+                if mode != before {
+                    self.apply_proxy(mode);
+                }
+                ui.add_space(8.0);
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(tr1("当前：{}", "Now: {}", self.proxy.label()))
+                            .size(11.0)
+                            .color(crate::theme::text_weak()),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(tr("关闭", "Close")).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            });
+        if close {
+            open = false;
+        }
+        if !open {
+            self.show_proxy = false;
+        }
+    }
+
+    /// Commit the proxy picked in the dialog (`0` system, `1` direct, `2` manual)
+    /// and write it to config.txt. The next check picks it up.
+    fn apply_proxy(&mut self, mode: u8) {
+        self.proxy_mode = mode;
+        match mode {
+            1 => {
+                self.proxy = crate::proxy::Proxy::Direct;
+                self.proxy_bad = false;
+                self.proxy_text.clear();
+            }
+            2 => {
+                // Keep "manual" selected even when the box is empty or garbage;
+                // only a parseable address is written to config.txt.
+                match crate::proxy::Proxy::parse(&self.proxy_text) {
+                    parsed @ crate::proxy::Proxy::Manual { .. } => {
+                        self.proxy = parsed;
+                        self.proxy_bad = false;
+                    }
+                    _ => {
+                        self.proxy_bad = true;
+                        self.status = tr(
+                            "代理地址无效，仍然沿用当前设置",
+                            "Invalid proxy address, keeping the current one",
+                        )
+                        .to_owned();
+                        return;
+                    }
+                }
+            }
+            _ => {
+                self.proxy = crate::proxy::Proxy::System;
+                self.proxy_bad = false;
+                self.proxy_text.clear();
+            }
+        }
+        if let Some(address) = self.proxy.address() {
+            self.proxy_text = address;
+        }
+        self.persist();
+        crate::util::log(&format!("proxy -> {}", self.proxy.key()));
+        self.status = tr1("代理：{}", "Proxy: {}", self.proxy.label());
+    }
+
+    fn start_install(&mut self) {
+        if self.install_rx.is_some() {
+            return;
+        }
+        let UpdateStatus::Newer(rel) = self.update.clone() else {
+            return;
+        };
+        self.install = Install::Downloading { got: 0, total: 0 };
+        self.status = tr("正在下载更新…", "Downloading the update…").to_owned();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.install_rx = Some(rx);
+        crate::util::log(&format!("update: downloading v{}", rel.version));
+
+        let _ = std::thread::Builder::new()
+            .name("rustshot-update-dl".into())
+            .spawn(move || {
+                let asset = if crate::update::installed_copy() {
+                    crate::update::setup_name(&rel.version)
+                } else {
+                    crate::update::PORTABLE_NAME.to_owned()
+                };
+                let dest = crate::update::update_dir().join(&asset);
+                let result = (|| -> Result<(), String> {
+                    let expected = crate::update::expected_sha(&rel.version, &asset)?;
+                    let url = crate::update::asset_url(&rel.version, &asset);
+                    let _ = tx.send(InstallEvent::Progress(0, 0));
+                    // One retry: a flaky proxy or a dropped connection should not
+                    // force the user to click again.
+                    let mut attempt = 0;
+                    while let Err(e) = crate::update::download(&url, &dest, |got, total| {
+                        let _ = tx.send(InstallEvent::Progress(got, total));
+                        crate::app::request_repaint();
+                    }) {
+                        attempt += 1;
+                        if attempt >= 2 {
+                            return Err(e);
+                        }
+                        crate::util::log(&format!("update: download failed, retrying: {e}"));
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        let _ = tx.send(InstallEvent::Progress(0, 0));
+                    }
+                    let _ = tx.send(InstallEvent::Verifying);
+                    crate::app::request_repaint();
+                    let actual = crate::update::sha256_file(&dest)?;
+                    if actual != expected {
+                        return Err(tr(
+                            "下载的文件与 SHA256SUMS.txt 不一致，已停止安装",
+                            "the download does not match SHA256SUMS.txt, install aborted",
+                        )
+                        .to_owned());
+                    }
+                    crate::apply::spawn_helper(&dest)
+                })();
+                match result {
+                    Ok(()) => {
+                        let _ = tx.send(InstallEvent::Done);
+                    }
+                    Err(e) => {
+                        crate::util::log(&format!("update: install aborted: {e}"));
+                        let _ = tx.send(InstallEvent::Failed(e));
+                    }
+                }
+                crate::app::request_repaint();
+            });
+    }
+
+    fn poll_install(&mut self, ctx: &egui::Context) {
+        let Some(rx) = self.install_rx.take() else {
+            return;
+        };
+        let mut finished = false;
+        loop {
+            match rx.try_recv() {
+                Ok(InstallEvent::Progress(got, total)) => {
+                    self.install = Install::Downloading { got, total }
+                }
+                Ok(InstallEvent::Verifying) => self.install = Install::Verifying,
+                Ok(InstallEvent::Failed(e)) => {
+                    self.status = tr1("更新失败：{}", "Update failed: {}", &e);
+                    self.install = Install::Failed(e);
+                }
+                Ok(InstallEvent::Done) => {
+                    self.install = Install::Launching;
+                    finished = true;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    self.install_rx = Some(rx);
+                    break;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    if matches!(
+                        self.install,
+                        Install::Downloading { .. } | Install::Verifying
+                    ) {
+                        self.install = Install::Failed(
+                            tr("更新线程意外退出", "the update thread exited unexpectedly")
+                                .to_owned(),
+                        );
+                    }
+                    break;
+                }
+            }
+        }
+        if finished {
+            self.quit_for_update(ctx);
+        }
+    }
+
+    /// Release the single-instance mutex and quit so the helper can install.
+    fn quit_for_update(&mut self, ctx: &egui::Context) {
+        crate::util::log("update: verified, quitting so the helper can install");
+        crate::worker::release_instance();
+        self.quitting = true;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
     fn poll_update(&mut self) {
         let Some(rx) = self.update_rx.take() else {
             return;
@@ -275,6 +587,15 @@ impl App {
         match rx.try_recv() {
             Ok(status) => {
                 match &status {
+                    UpdateStatus::Newer(rel)
+                        if self.auto_update == crate::update::AutoUpdate::Silent =>
+                    {
+                        self.status = tr1(
+                            "发现新版本 v{}，静默更新中…",
+                            "New version v{} found, updating silently…",
+                            &rel.version,
+                        );
+                    }
                     UpdateStatus::Newer(rel) => {
                         self.status = tr1(
                             "发现新版本 v{}，可在更新窗口查看",
@@ -294,7 +615,12 @@ impl App {
                     }
                     _ => {}
                 }
+                let auto = self.auto_update == crate::update::AutoUpdate::Silent
+                    && matches!(status, UpdateStatus::Newer(_));
                 self.update = status;
+                if auto {
+                    self.start_install();
+                }
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => self.update_rx = Some(rx),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -383,6 +709,7 @@ impl App {
                 WorkerEvent::CaptureFull => self.capture_full(),
                 WorkerEvent::CaptureFullOverlay => self.begin_capture(ctx, Tool::Select, true),
                 WorkerEvent::ShowPanel => self.show_panel(ctx),
+                WorkerEvent::CheckUpdate => self.check_update(),
                 WorkerEvent::ThemeChanged => self.refresh_theme(ctx),
                 WorkerEvent::Quit => {
                     self.quitting = true;
@@ -683,6 +1010,8 @@ impl App {
             auto_save: self.auto_save,
             theme: self.theme_pref,
             lang: self.lang_pref,
+            auto_update: self.auto_update,
+            proxy: self.proxy.clone(),
         }
         .save();
     }
@@ -790,6 +1119,18 @@ impl App {
                             ui.close();
                         }
                         ui.separator();
+                        if ui
+                            .button(tr1(
+                                "网络代理…（当前：{}）",
+                                "Proxy… (now: {})",
+                                self.proxy.label(),
+                            ))
+                            .clicked()
+                        {
+                            self.show_proxy = true;
+                            ui.close();
+                        }
+                        ui.separator();
                         if ui.button(tr("开源声明（MIT）", "License (MIT)")).clicked() {
                             self.show_license = true;
                             ui.close();
@@ -840,6 +1181,7 @@ impl App {
 
     fn dialogs(&mut self, ctx: &egui::Context) {
         self.update_dialog(ctx);
+        self.proxy_dialog(ctx);
         if self.show_license {
             let mut open = true;
             egui::Window::new(tr("开源声明 · MIT License", "License · MIT"))
@@ -893,6 +1235,8 @@ impl App {
         let mut open = true;
         let mut retry = false;
         let mut close = false;
+        let mut install_now = false;
+        let mut silent_toggle: Option<bool> = None;
         let mut page: Option<String> = None;
         let current = self.update.clone();
         let release_url = match &current {
@@ -914,6 +1258,23 @@ impl App {
                     .size(11.0)
                     .color(crate::theme::text_faint()),
                 );
+                let mut silent = self.auto_update == crate::update::AutoUpdate::Silent;
+                if ui
+                    .checkbox(
+                        &mut silent,
+                        tr(
+                            "发现新版本后直接静默安装（不再询问）",
+                            "Install new versions silently (do not ask)",
+                        ),
+                    )
+                    .on_hover_text(tr(
+                        "写入 config.txt 的 auto_update=silent，仍会弹一次 UAC",
+                        "writes auto_update=silent to config.txt; one UAC prompt still applies",
+                    ))
+                    .changed()
+                {
+                    silent_toggle = Some(silent);
+                }
                 ui.add_space(6.0);
                 match &current {
                     UpdateStatus::Idle => {
@@ -1032,11 +1393,104 @@ impl App {
                         );
                     }
                 }
+                if matches!(current, UpdateStatus::Newer(_)) {
+                    ui.add_space(6.0);
+                    match &self.install {
+                        Install::Idle => {
+                            ui.label(
+                                egui::RichText::new(tr(
+                                    "下载并校验后静默安装，只需要确认一次 UAC，装完自动重启。",
+                                    "Download, verify and install silently — one UAC prompt, then a restart.",
+                                ))
+                                .size(11.0)
+                                .color(crate::theme::text_faint()),
+                            );
+                        }
+                        Install::Downloading { got, total } => {
+                            let pct = got
+                                .saturating_mul(100)
+                                .checked_div(*total)
+                                .map(|p| p.min(100));
+                            let ratio = pct.map(|p| p as f32 / 100.0).unwrap_or(0.0);
+                            let text = match pct {
+                                Some(p) => format!(
+                                    "{}  ({} / {})",
+                                    tr1("正在下载 {}%", "Downloading {}%", p),
+                                    update::human_size(*got),
+                                    update::human_size(*total)
+                                ),
+                                None => tr1(
+                                    "正在下载 {}",
+                                    "Downloading {}",
+                                    update::human_size(*got),
+                                ),
+                            };
+                            ui.add(
+                                egui::ProgressBar::new(ratio)
+                                    .desired_width(400.0)
+                                    .text(text),
+                            );
+                        }
+                        Install::Verifying => {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label(
+                                    egui::RichText::new(tr(
+                                        "正在校验 SHA-256…",
+                                        "Verifying SHA-256…",
+                                    ))
+                                    .size(12.0),
+                                );
+                            });
+                        }
+                        Install::Launching => {
+                            ui.label(
+                                egui::RichText::new(tr(
+                                    "校验通过，正在安装并重启…",
+                                    "Verified — installing and restarting…",
+                                ))
+                                .size(12.0)
+                                .color(crate::theme::ok()),
+                            );
+                        }
+                        Install::Failed(err) => {
+                            ui.label(
+                                egui::RichText::new(tr("更新失败", "Update failed"))
+                                    .size(12.5)
+                                    .color(crate::theme::warn()),
+                            );
+                            ui.label(
+                                egui::RichText::new(err)
+                                    .size(11.0)
+                                    .color(crate::theme::text_weak()),
+                            );
+                        }
+                    }
+                }
                 ui.add_space(8.0);
                 ui.separator();
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     let busy = matches!(current, UpdateStatus::Checking);
+                    let installing = matches!(
+                        self.install,
+                        Install::Downloading { .. } | Install::Verifying | Install::Launching
+                    );
+                    if matches!(current, UpdateStatus::Newer(_))
+                        && !installing
+                        && ui
+                            .add_enabled(
+                                !busy,
+                                egui::Button::new(if matches!(self.install, Install::Failed(_)) {
+                                    tr("重试更新", "Retry update")
+                                } else {
+                                    tr("立即更新", "Update now")
+                                }),
+                            )
+                            .clicked()
+                    {
+                        install_now = true;
+                    }
                     if ui
                         .add_enabled(!busy, egui::Button::new(tr("重新检查", "Check again")))
                         .clicked()
@@ -1053,6 +1507,18 @@ impl App {
                     });
                 });
             });
+        if let Some(silent) = silent_toggle {
+            self.auto_update = if silent {
+                crate::update::AutoUpdate::Silent
+            } else {
+                crate::update::AutoUpdate::Notice
+            };
+            self.persist();
+        }
+        if install_now {
+            self.install = Install::Idle;
+            self.start_install();
+        }
         if retry {
             self.check_update();
         }
@@ -1356,6 +1822,7 @@ impl eframe::App for App {
         self.poll_save();
         self.poll_dir();
         self.poll_update();
+        self.poll_install(ctx);
         self.pump_worker(ctx);
         self.pump_tray(ctx);
         if self.panel_park.is_some() {
@@ -1376,6 +1843,11 @@ impl eframe::App for App {
                     )
                     .to_owned();
                     crate::util::log("started in tray");
+                }
+                Start::Check => {
+                    self.hide_to_tray(ctx);
+                    crate::util::log("started to check for updates");
+                    self.check_update();
                 }
             }
         }

@@ -6,7 +6,9 @@
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Mutex, OnceLock};
 
-use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{
+    CloseHandle, GetLastError, HANDLE, HWND, LPARAM, LRESULT, WPARAM,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, UnregisterHotKey, VK_F1, VK_F2, VK_Q, VK_S,
@@ -28,6 +30,7 @@ pub const THEME_CLASS: &str = "RustShotThemeWnd";
 pub const CMD_REGION: usize = 1;
 pub const CMD_FULL: usize = 2;
 pub const CMD_PANEL: usize = 4;
+pub const CMD_CHECK_UPDATE: usize = 8;
 
 #[derive(Clone, Copy, Debug)]
 pub enum WorkerEvent {
@@ -37,6 +40,8 @@ pub enum WorkerEvent {
     /// Full screen through the overlay, whole frame preselected (F2).
     CaptureFullOverlay,
     ShowPanel,
+    /// `--check-update` asked the running instance to check for updates.
+    CheckUpdate,
     /// The OS light/dark setting may have changed.
     ThemeChanged,
     Quit,
@@ -216,6 +221,7 @@ unsafe extern "system" fn worker_wndproc(
                 CMD_REGION => emit(WorkerEvent::CaptureRegion),
                 CMD_FULL => emit(WorkerEvent::CaptureFull),
                 CMD_PANEL => emit(WorkerEvent::ShowPanel),
+                CMD_CHECK_UPDATE => emit(WorkerEvent::CheckUpdate),
                 _ => {}
             }
             LRESULT(0)
@@ -244,6 +250,38 @@ unsafe extern "system" fn theme_wndproc(
 /// Handle of our own single-instance mutex, kept until the process exits.
 /// Dropping the handle would release ownership and let a second instance in.
 static INSTANCE_MUTEX: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+/// Does any process still hold the single-instance mutex?
+///
+/// The updater asks this before running the installer: Inno refuses to install
+/// while `AppMutex` exists, and with `/VERYSILENT /SUPPRESSMSGBOXES` that shows
+/// up as a silent abort.
+pub fn mutex_exists() -> bool {
+    unsafe {
+        use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
+        use windows::Win32::System::Threading::CreateMutexW;
+        let name = wide("Local\\RustShotSingleInstance");
+        match CreateMutexW(None, false, PCWSTR(name.as_ptr())) {
+            Ok(handle) => {
+                let existed = GetLastError() == ERROR_ALREADY_EXISTS;
+                let _ = CloseHandle(handle);
+                existed
+            }
+            Err(_) => false,
+        }
+    }
+}
+
+/// Drop the single-instance mutex before quitting for an update, otherwise the
+/// freshly installed copy would see the old process and exit silently.
+pub fn release_instance() {
+    let raw = INSTANCE_MUTEX.swap(0, std::sync::atomic::Ordering::SeqCst);
+    if raw != 0 {
+        unsafe {
+            let _ = CloseHandle(HANDLE(raw as *mut std::ffi::c_void));
+        }
+    }
+}
 
 /// True when another instance already owns the single-instance mutex.
 pub fn instance_exists() -> bool {

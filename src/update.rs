@@ -5,15 +5,16 @@
 //! out of the release JSON, so the binary does not grow a TLS stack or serde.
 
 use std::ffi::c_void;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
 use crate::i18n::{tr, tr1, tr2};
 use windows::Win32::Networking::WinHttp::{
-    WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_OPTION_URL,
+    WINHTTP_FLAG_SECURE, WINHTTP_OPTION_URL, WINHTTP_QUERY_CONTENT_LENGTH,
     WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle, WinHttpConnect,
-    WinHttpOpen, WinHttpOpenRequest, WinHttpQueryDataAvailable, WinHttpQueryHeaders,
-    WinHttpQueryOption, WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest,
-    WinHttpSetTimeouts,
+    WinHttpOpenRequest, WinHttpQueryDataAvailable, WinHttpQueryHeaders, WinHttpQueryOption,
+    WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetTimeouts,
 };
 use windows::core::PCWSTR;
 
@@ -38,6 +39,32 @@ pub enum Status {
     /// A newer release exists.
     Newer(Release),
     Failed(String),
+}
+
+/// What a found update is allowed to do on its own (`auto_update=`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AutoUpdate {
+    /// Only report it; the user decides in the dialog.
+    #[default]
+    Notice,
+    /// Download, verify and install without asking (still one UAC prompt).
+    Silent,
+}
+
+impl AutoUpdate {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Notice => "notice",
+            Self::Silent => "silent",
+        }
+    }
+
+    pub fn parse(text: &str) -> Self {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "silent" | "auto" | "yes" => Self::Silent,
+            _ => Self::Notice,
+        }
+    }
 }
 
 /// The `latest` release as reported by GitHub.
@@ -75,6 +102,265 @@ fn evaluate(result: Result<Release, String>) -> Status {
         Ok(rel) => Status::Latest(rel.version),
         Err(e) => Status::Failed(e),
     }
+}
+
+/// Where GitHub publishes the files of a release tag.
+pub fn asset_url(version: &str, name: &str) -> String {
+    format!("https://github.com/{REPO}/releases/download/v{version}/{name}")
+}
+
+/// File names published with every release (see `.github/workflows/release.yml`).
+pub fn setup_name(version: &str) -> String {
+    format!("RustShot-Setup-{version}.exe")
+}
+pub const PORTABLE_NAME: &str = "rust_shot.exe";
+pub const SUMS_NAME: &str = "SHA256SUMS.txt";
+
+/// `%TEMP%\RustShot\update` — downloads land here and are swapped in later.
+pub fn update_dir() -> PathBuf {
+    std::env::temp_dir().join("RustShot").join("update")
+}
+
+/// Is this exe part of an installed copy (next to `unins000.exe`)?
+///
+/// The portable build is a bare exe, so this is what decides between the
+/// "run the setup silently" path and the "replace the exe" path.
+pub fn installed_copy() -> bool {
+    std::env::current_exe()
+        .map(|exe| installed_copy_at(&exe))
+        .unwrap_or(false)
+}
+
+/// [`installed_copy`] for an arbitrary exe path (the updater helper runs from
+/// `%TEMP%`, so it has to ask about the app, not about itself).
+pub fn installed_copy_at(exe: &Path) -> bool {
+    exe.parent()
+        .map(|dir| dir.join("unins000.exe").exists())
+        .unwrap_or(false)
+}
+
+/// `4.5 MB` style size for the download progress line.
+pub fn human_size(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    let b = bytes as f64;
+    if b >= KB * KB {
+        format!("{:.1} MB", b / (KB * KB))
+    } else if b >= KB {
+        format!("{:.0} KB", b / KB)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+/// Pick the hash for `name` out of a `SHA256SUMS.txt` payload.
+///
+/// Lines look like `<hex>  <file name>` (two spaces, as produced by the
+/// release workflow). Unknown names and malformed lines are skipped.
+pub fn checksum_for(sums: &str, name: &str) -> Option<String> {
+    for line in sums.lines() {
+        let line = line.trim();
+        let Some((hash, file)) = line.split_once("  ") else {
+            continue;
+        };
+        if file.trim() != name {
+            continue;
+        }
+        let hash = hash.trim().to_ascii_lowercase();
+        if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(hash);
+        }
+    }
+    None
+}
+
+/// SHA-256 of a file, lowercase hex.
+pub fn sha256_file(path: &Path) -> Result<String, String> {
+    let mut file = std::fs::File::open(path).map_err(|e| {
+        tr1(
+            "无法读取下载的文件：{}",
+            "cannot read the downloaded file: {}",
+            e,
+        )
+    })?;
+    let mut hasher = crate::sha256::Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        use std::io::Read;
+        let n = file.read(&mut buf).map_err(|e| {
+            tr1(
+                "无法读取下载的文件：{}",
+                "cannot read the downloaded file: {}",
+                e,
+            )
+        })?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finish_hex())
+}
+
+/// Expected hash of one release asset, read from `SHA256SUMS.txt`.
+pub fn expected_sha(version: &str, asset: &str) -> Result<String, String> {
+    let response = http_get(&asset_url(version, SUMS_NAME))?;
+    if response.status != 200 {
+        return Err(tr1(
+            "下载校验清单失败（HTTP {}）",
+            "could not fetch the checksum list (HTTP {})",
+            response.status,
+        ));
+    }
+    checksum_for(&response.body, asset).ok_or_else(|| {
+        tr1(
+            "校验清单里没有 {}",
+            "the checksum list does not mention {}",
+            asset,
+        )
+    })
+}
+
+/// Download `url` to `dest`, reporting `(received, total)` as it goes.
+///
+/// `total` is 0 when the server omits Content-Length. A failed or partial
+/// download is deleted so a retry never picks up a half file.
+pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
+    let (host, path) = split_https(url)?;
+    let host_w = crate::util::wide(&host);
+    let path_w = crate::util::wide(&path);
+    let verb = crate::util::wide("GET");
+    let headers = utf16(&format!(
+        "Accept: application/octet-stream\r\nUser-Agent: RustShot/{CURRENT}\r\n"
+    ));
+
+    if let Some(dir) = dest.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| {
+            tr1(
+                "无法创建下载目录：{}",
+                "cannot create the download folder: {}",
+                e,
+            )
+        })?;
+    }
+    let mut file = std::fs::File::create(dest)
+        .map_err(|e| tr1("无法写入下载文件：{}", "cannot write the download: {}", e))?;
+
+    let result = (|| -> Result<(), String> {
+        let session = crate::proxy::open(&format!("RustShot/{CURRENT}"))?;
+        // Downloads are big compared to the JSON check: give them more time.
+        let _ = unsafe { WinHttpSetTimeouts(session.0, 10000, 15000, 15000, 60000) };
+        let conn = Handle::new(
+            unsafe { WinHttpConnect(session.0, PCWSTR(host_w.as_ptr()), 443, 0) },
+            &format!(
+                "{}{}",
+                tr("无法连接 GitHub", "cannot reach GitHub"),
+                crate::proxy::hint()
+            ),
+        )?;
+        let request = Handle::new(
+            unsafe {
+                WinHttpOpenRequest(
+                    conn.0,
+                    PCWSTR(verb.as_ptr()),
+                    PCWSTR(path_w.as_ptr()),
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                    std::ptr::null(),
+                    WINHTTP_FLAG_SECURE,
+                )
+            },
+            tr("无法创建下载请求", "cannot create the download request"),
+        )?;
+        unsafe { WinHttpSendRequest(request.0, Some(&headers), None, 0, 0, 0) }.map_err(
+            net_err(tr(
+                "下载请求发送失败",
+                "sending the download request failed",
+            )),
+        )?;
+        unsafe { WinHttpReceiveResponse(request.0, std::ptr::null_mut()) }.map_err(net_err(tr(
+            "读取下载响应失败",
+            "reading the download response failed",
+        )))?;
+
+        let status = status_code(request.0);
+        if status != 200 {
+            return Err(tr1(
+                "下载更新包失败（HTTP {}）",
+                "the update download failed (HTTP {})",
+                status,
+            ));
+        }
+        let total = header_u64(request.0, WINHTTP_QUERY_CONTENT_LENGTH);
+
+        let mut received = 0u64;
+        let mut last_report = 0u64;
+        loop {
+            let mut available = 0u32;
+            unsafe { WinHttpQueryDataAvailable(request.0, &mut available) }.map_err(net_err(
+                tr("读取下载响应失败", "reading the download response failed"),
+            ))?;
+            if available == 0 {
+                break;
+            }
+            let chunk = available.min(64 * 1024) as usize;
+            let mut buf = vec![0u8; chunk];
+            let mut read = 0u32;
+            unsafe {
+                WinHttpReadData(
+                    request.0,
+                    buf.as_mut_ptr() as *mut c_void,
+                    chunk as u32,
+                    &mut read,
+                )
+            }
+            .map_err(net_err(tr(
+                "读取下载响应失败",
+                "reading the download response failed",
+            )))?;
+            if read == 0 {
+                break;
+            }
+            file.write_all(&buf[..read as usize])
+                .map_err(|e| tr1("写入下载文件失败：{}", "cannot write the download: {}", e))?;
+            received += read as u64;
+            // Report at most ~30 times a second, plus the final byte.
+            if received - last_report >= 128 * 1024 {
+                last_report = received;
+                progress(received, total);
+            }
+        }
+        file.flush()
+            .map_err(|e| tr1("写入下载文件失败：{}", "cannot write the download: {}", e))?;
+        progress(received, total);
+        if received == 0 {
+            return Err(tr("下载到的文件是空的", "the downloaded file is empty").to_owned());
+        }
+        Ok(())
+    })();
+
+    if result.is_err() {
+        drop(file);
+        let _ = std::fs::remove_file(dest);
+    }
+    result
+}
+
+/// Numeric response header (`WINHTTP_QUERY_* | WINHTTP_QUERY_FLAG_NUMBER`).
+fn header_u64(request: *mut c_void, query: u32) -> u64 {
+    let mut value = 0u32;
+    let mut len = std::mem::size_of::<u32>() as u32;
+    let mut index = 0u32;
+    let ok = unsafe {
+        WinHttpQueryHeaders(
+            request,
+            query | WINHTTP_QUERY_FLAG_NUMBER,
+            PCWSTR::null(),
+            Some(&mut value as *mut u32 as *mut c_void),
+            &mut len,
+            &mut index,
+        )
+    };
+    if ok.is_err() { 0 } else { value as u64 }
 }
 
 /// Open a URL with the user's default browser.
@@ -303,7 +589,6 @@ fn http_get(url: &str) -> Result<HttpResponse, String> {
     let (host, path) = split_https(url)?;
     // The `W` entry points expect NUL terminated strings (`wide`); the header
     // block is passed with an explicit length instead.
-    let agent = crate::util::wide(&format!("RustShot/{CURRENT}"));
     let host_w = crate::util::wide(&host);
     let path_w = crate::util::wide(&path);
     let verb = crate::util::wide("GET");
@@ -314,18 +599,7 @@ fn http_get(url: &str) -> Result<HttpResponse, String> {
          X-GitHub-Api-Version: 2022-11-28\r\n"
     ));
 
-    let session = Handle::new(
-        unsafe {
-            WinHttpOpen(
-                PCWSTR(agent.as_ptr()),
-                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-                PCWSTR::null(),
-                PCWSTR::null(),
-                0,
-            )
-        },
-        tr("无法初始化网络会话", "cannot open a network session"),
-    )?;
+    let session = crate::proxy::open(&format!("RustShot/{CURRENT}"))?;
     let _ = unsafe { WinHttpSetTimeouts(session.0, 5000, 8000, 8000, 12000) };
 
     let conn = Handle::new(
@@ -731,6 +1005,59 @@ mod tests {
         assert_eq!(
             tag_from_release_url("https://github.com/a/b/releases"),
             None
+        );
+    }
+
+    #[test]
+    fn checksum_for_picks_the_matching_asset() {
+        let sums = "aaa\n\
+                    0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  RustShot-Setup-0.2.0.exe\n\
+                    fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210  rust_shot.exe\n";
+        assert_eq!(
+            checksum_for(sums, "RustShot-Setup-0.2.0.exe").as_deref(),
+            Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+        );
+        assert_eq!(
+            checksum_for(sums, "rust_shot.exe").as_deref(),
+            Some("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210")
+        );
+        // Unknown file, malformed hash, missing separator: no false matches.
+        assert!(checksum_for(sums, "RustShot-0.2.0-portable.zip").is_none());
+        assert!(checksum_for("nothex  rust_shot.exe", "rust_shot.exe").is_none());
+        assert!(checksum_for("0123  rust_shot.exe", "rust_shot.exe").is_none());
+        assert!(checksum_for("", "rust_shot.exe").is_none());
+    }
+
+    #[test]
+    fn asset_urls_point_at_the_release_tag() {
+        assert_eq!(
+            asset_url("0.2.0", &setup_name("0.2.0")),
+            "https://github.com/i314q159/rust_shot/releases/download/v0.2.0/RustShot-Setup-0.2.0.exe"
+        );
+        assert_eq!(
+            asset_url("0.2.0", PORTABLE_NAME),
+            "https://github.com/i314q159/rust_shot/releases/download/v0.2.0/rust_shot.exe"
+        );
+        assert!(asset_url("0.2.0", SUMS_NAME).ends_with("/v0.2.0/SHA256SUMS.txt"));
+    }
+
+    #[test]
+    fn human_size_switches_units() {
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(human_size(4096), "4 KB");
+        assert_eq!(human_size(4_500_000), "4.3 MB");
+    }
+
+    #[test]
+    fn auto_update_parses() {
+        assert_eq!(AutoUpdate::parse("silent"), AutoUpdate::Silent);
+        assert_eq!(AutoUpdate::parse(" Silent "), AutoUpdate::Silent);
+        assert_eq!(AutoUpdate::parse("notice"), AutoUpdate::Notice);
+        assert_eq!(AutoUpdate::parse("nonsense"), AutoUpdate::Notice);
+        assert_eq!(AutoUpdate::default(), AutoUpdate::Notice);
+        assert_eq!(
+            AutoUpdate::parse(AutoUpdate::Silent.key()),
+            AutoUpdate::Silent
         );
     }
 

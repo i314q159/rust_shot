@@ -2,11 +2,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod apply;
 mod capture;
 mod config;
 mod fonts;
 mod i18n;
 mod overlay;
+mod proxy;
+mod sha256;
 mod shapes;
 mod theme;
 mod update;
@@ -27,6 +30,26 @@ fn main() {
     ));
 
     let args: Vec<String> = std::env::args().skip(1).collect();
+
+    // Hidden helper: `--apply-update <pid> <file>` installs a verified download
+    // after the app has exited and starts it again. Runs before any UI setup.
+    if let Some(pos) = args.iter().position(|a| a == "--apply-update") {
+        let pid = args
+            .get(pos + 1)
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0);
+        if let Some(source) = args.get(pos + 2) {
+            let app = args
+                .get(pos + 3)
+                .map(std::path::PathBuf::from)
+                .or_else(|| std::env::current_exe().ok())
+                .unwrap_or_else(|| std::path::PathBuf::from(source));
+            apply::run(pid, std::path::Path::new(source), &app);
+        }
+        return;
+    }
+    // A portable copy leaves `rust_shot.exe.old` behind after swapping.
+    apply::cleanup_old_exe();
     // `None` = no flag given: a plain launch parks itself in the tray.
     let mut requested: Option<app::Start> = None;
     let mut selftest: Option<String> = None;
@@ -37,6 +60,7 @@ fn main() {
             "--capture" | "-c" => requested = Some(app::Start::Region),
             "--full" | "-f" => requested = Some(app::Start::Full),
             "--tray" | "--silent" => requested = Some(app::Start::Tray),
+            "--check-update" => requested = Some(app::Start::Check),
             "--selftest" => {
                 selftest = Some(
                     args.get(i + 1)
@@ -106,6 +130,7 @@ fn resolve_launch(
         (Some(app::Start::Panel), true) => (None, Some(worker::CMD_PANEL)),
         (Some(app::Start::Region), true) => (None, Some(worker::CMD_REGION)),
         (Some(app::Start::Full), true) => (None, Some(worker::CMD_FULL)),
+        (Some(app::Start::Check), true) => (None, Some(worker::CMD_CHECK_UPDATE)),
         (Some(start), false) => (Some(start), None),
     }
 }
@@ -119,6 +144,7 @@ fn show_help() {
          --panel, --show   启动并显示主面板\n\
          --capture, -c     立即区域截图\n\
          --full, -f        立即全屏截图到剪贴板\n\
+         --check-update    检查更新（发现新版本时按 auto_update 设置处理）\n\
          --tray, --silent  同“无参数”，开机自启用\n\
          --selftest <png>  离屏渲染一张测试图并退出\n\n\
          全局热键：F1 区域截图 · F2 全屏 · Ctrl+Alt+Q 退出";
@@ -127,6 +153,7 @@ fn show_help() {
          --panel, --show   start with the main panel\n\
          --capture, -c     region capture right away\n\
          --full, -f        full screen to the clipboard (no overlay)\n\
+         --check-update    check for updates (honours auto_update)\n\
          --tray, --silent  same as no arguments (used by autostart)\n\
          --selftest <png>  render a test image and exit\n\n\
          Hotkeys: F1 region - F2 full screen - Ctrl+Alt+Q quit";

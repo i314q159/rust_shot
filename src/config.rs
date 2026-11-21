@@ -19,6 +19,10 @@ pub struct Config {
     pub theme: crate::theme::Preference,
     /// UI language: system / zh / en.
     pub lang: crate::i18n::Preference,
+    /// Update check: only notify, or install silently once found.
+    pub auto_update: crate::update::AutoUpdate,
+    /// Proxy for the update check / download.
+    pub proxy: crate::proxy::Proxy,
 }
 
 impl Default for Config {
@@ -28,6 +32,8 @@ impl Default for Config {
             auto_save: true,
             theme: crate::theme::Preference::System,
             lang: crate::i18n::Preference::System,
+            auto_update: crate::update::AutoUpdate::default(),
+            proxy: crate::proxy::Proxy::default(),
         }
     }
 }
@@ -114,13 +120,13 @@ impl Config {
                 "auto_save" => cfg.auto_save = value != "false",
                 "theme" => cfg.theme = crate::theme::Preference::parse(value),
                 "lang" => cfg.lang = crate::i18n::Preference::parse(value),
+                "auto_update" => cfg.auto_update = crate::update::AutoUpdate::parse(value),
+                "proxy" => cfg.proxy = crate::proxy::Proxy::parse(value),
                 _ => {}
             }
         }
-        if file == legacy_path() {
-            // Move the settings next to the exe so they travel with the tool.
-            cfg.save();
-        }
+        // A legacy copy is left in place: `save()` writes next to the exe, and
+        // rewriting on every read would fight with the UI's own saves.
         cfg
     }
 
@@ -139,10 +145,12 @@ impl Config {
              # theme: system | light | dark   lang: system | zh | en\n",
         );
         let body = format!(
-            "{header}save_dir={dir}\nauto_save={}\ntheme={}\nlang={}\n",
+            "{header}save_dir={dir}\nauto_save={}\ntheme={}\nlang={}\nauto_update={}\nproxy={}\n",
             self.auto_save,
             self.theme.key(),
-            self.lang.key()
+            self.lang.key(),
+            self.auto_update.key(),
+            self.proxy.key()
         );
         let primary = path();
         if let Some(p) = &primary
