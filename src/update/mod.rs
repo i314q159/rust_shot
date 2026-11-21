@@ -1,9 +1,3 @@
-
-
-
-
-
-
 pub(crate) mod apply;
 pub(crate) mod sha256;
 
@@ -22,7 +16,6 @@ use windows::Win32::Networking::WinHttp::{
 };
 use windows::core::PCWSTR;
 
-
 pub const REPO: &str = "i314q159/rust_shot";
 
 pub const RELEASES_URL: &str = "https://github.com/i314q159/rust_shot/releases/latest";
@@ -31,27 +24,23 @@ const API_URL: &str = "https://api.github.com/repos/i314q159/rust_shot/releases/
 
 pub const CURRENT: &str = env!("CARGO_PKG_VERSION");
 
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Status {
-    
     Idle,
-    
+
     Checking,
-    
+
     Latest(String),
-    
+
     Newer(Release),
     Failed(String),
 }
 
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AutoUpdate {
-    
     #[default]
     Notice,
-    
+
     Silent,
 }
 
@@ -71,21 +60,16 @@ impl AutoUpdate {
     }
 }
 
-
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Release {
-    
     pub version: String,
     pub tag: String,
     pub name: String,
     pub url: String,
-    
+
     pub published: String,
     pub notes: String,
 }
-
-
-
 
 pub fn check_async() -> Receiver<Status> {
     let (tx, rx) = channel();
@@ -108,25 +92,18 @@ fn evaluate(result: Result<Release, String>) -> Status {
     }
 }
 
-
 pub fn asset_url(version: &str, name: &str) -> String {
     format!("https://github.com/{REPO}/releases/download/v{version}/{name}")
 }
-
 
 pub fn setup_name(version: &str) -> String {
     format!("RustShot-Setup-{version}.exe")
 }
 pub const SUMS_NAME: &str = "SHA256SUMS.txt";
 
-
 pub fn update_dir() -> PathBuf {
     std::env::temp_dir().join("RustShot").join("update")
 }
-
-
-
-
 
 pub fn installed_copy() -> bool {
     std::env::current_exe()
@@ -134,14 +111,11 @@ pub fn installed_copy() -> bool {
         .unwrap_or(false)
 }
 
-
-
 pub fn installed_copy_at(exe: &Path) -> bool {
     exe.parent()
         .map(|dir| dir.join("unins000.exe").exists())
         .unwrap_or(false)
 }
-
 
 pub fn human_size(bytes: u64) -> String {
     const KB: f64 = 1024.0;
@@ -154,10 +128,6 @@ pub fn human_size(bytes: u64) -> String {
         format!("{bytes} B")
     }
 }
-
-
-
-
 
 pub fn checksum_for(sums: &str, name: &str) -> Option<String> {
     for line in sums.lines() {
@@ -175,7 +145,6 @@ pub fn checksum_for(sums: &str, name: &str) -> Option<String> {
     }
     None
 }
-
 
 pub fn sha256_file(path: &Path) -> Result<String, String> {
     let mut file =
@@ -195,7 +164,6 @@ pub fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(hasher.finish_hex())
 }
 
-
 pub fn expected_sha(version: &str, asset: &str) -> Result<String, String> {
     let response = http_get(&asset_url(version, SUMS_NAME))?;
     if response.status != 200 {
@@ -207,10 +175,6 @@ pub fn expected_sha(version: &str, asset: &str) -> Result<String, String> {
     checksum_for(&response.body, asset)
         .ok_or_else(|| tr1(strings::THE_CHECKSUM_LIST_DOES_NOT_MENTION, asset))
 }
-
-
-
-
 
 pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
     let (host, path) = split_https(url)?;
@@ -230,7 +194,7 @@ pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> R
 
     let result = (|| -> Result<(), String> {
         let session = crate::config::proxy::open(&format!("RustShot/{CURRENT}"))?;
-        
+
         let _ = unsafe { WinHttpSetTimeouts(session.0, 10000, 15000, 15000, 60000) };
         let conn = Handle::new(
             unsafe { WinHttpConnect(session.0, PCWSTR(host_w.as_ptr()), 443, 0) },
@@ -292,7 +256,7 @@ pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> R
             file.write_all(&buf[..read as usize])
                 .map_err(|e| tr1(strings::CANNOT_WRITE_THE_DOWNLOAD, e))?;
             received += read as u64;
-            
+
             if received - last_report >= 128 * 1024 {
                 last_report = received;
                 progress(received, total);
@@ -314,7 +278,6 @@ pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> R
     result
 }
 
-
 fn header_u64(request: *mut c_void, query: u32) -> u64 {
     let mut value = 0u32;
     let mut len = std::mem::size_of::<u32>() as u32;
@@ -332,20 +295,12 @@ fn header_u64(request: *mut c_void, query: u32) -> u64 {
     if ok.is_err() { 0 } else { value as u64 }
 }
 
-
 pub fn open_page(url: &str) {
     let _ = std::process::Command::new("explorer").arg(url).spawn();
     crate::platform::util::log(&format!("opened {url}"));
 }
 
-
-
-
-
-
 pub fn fetch_latest() -> Result<Release, String> {
-    
-    
     #[cfg(debug_assertions)]
     if let Some(path) = std::env::var_os("RUSTSHOT_UPDATE_JSON") {
         let text = std::fs::read_to_string(&path)
@@ -369,7 +324,6 @@ pub fn fetch_latest() -> Result<Release, String> {
     }
 }
 
-
 fn fetch_from_api() -> Result<Release, String> {
     let response = http_get(API_URL)?;
     match response.status {
@@ -379,7 +333,6 @@ fn fetch_from_api() -> Result<Release, String> {
         code => Err(tr1(strings::THE_GITHUB_API_RETURNED_HTTP, code)),
     }
 }
-
 
 fn fetch_from_page() -> Result<Release, String> {
     let response = http_get(RELEASES_URL)?;
@@ -403,7 +356,6 @@ fn fetch_from_page() -> Result<Release, String> {
     })
 }
 
-
 pub fn tag_from_release_url(url: &str) -> Option<String> {
     let tail = url.split(['?', '#']).next()?;
     let (_, tag) = tail.split_once("/releases/tag/")?;
@@ -414,8 +366,6 @@ pub fn tag_from_release_url(url: &str) -> Option<String> {
         Some(tag.to_owned())
     }
 }
-
-
 
 pub fn normalize_version(text: &str) -> Option<String> {
     let trimmed = text.trim();
@@ -447,7 +397,6 @@ fn version_parts(text: &str) -> Vec<u64> {
         .unwrap_or_default()
 }
 
-
 pub fn is_newer(latest: &str, current: &str) -> bool {
     let a = version_parts(latest);
     let b = version_parts(current);
@@ -463,7 +412,6 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
     }
     false
 }
-
 
 pub fn parse_release(json: &str) -> Result<Release, String> {
     let fields = object_fields(json);
@@ -494,9 +442,6 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
     })
 }
 
-
-
-
 struct Handle(*mut c_void);
 
 impl Handle {
@@ -519,23 +464,20 @@ fn net_err(what: &str) -> impl Fn(windows::core::Error) -> String {
     move |e| tr2(strings::UPDATE_NET_ERROR, what, e.code().0)
 }
 
-
 pub struct HttpResponse {
     pub status: u32,
-    
+
     pub url: String,
     pub body: String,
 }
 
-
 fn http_get(url: &str) -> Result<HttpResponse, String> {
     let (host, path) = split_https(url)?;
-    
-    
+
     let host_w = crate::platform::util::wide(&host);
     let path_w = crate::platform::util::wide(&path);
     let verb = crate::platform::util::wide("GET");
-    
+
     let headers = utf16(&format!(
         "Accept: application/vnd.github+json, text/html\r\n\
          User-Agent: RustShot/{CURRENT}\r\n\
@@ -604,7 +546,6 @@ fn utf16(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
 }
 
-
 fn status_code(request: *mut c_void) -> u32 {
     let mut code = 0u32;
     let mut len = std::mem::size_of::<u32>() as u32;
@@ -622,10 +563,9 @@ fn status_code(request: *mut c_void) -> u32 {
     if ok.is_err() { 0 } else { code }
 }
 
-
 fn final_url(request: *mut c_void) -> String {
     let mut len = 0u32;
-    
+
     let _ = unsafe { WinHttpQueryOption(request, WINHTTP_OPTION_URL, None, &mut len) };
     if len == 0 {
         return String::new();
@@ -680,10 +620,6 @@ fn read_body(request: *mut c_void) -> Result<String, String> {
     }
     String::from_utf8(body).map_err(|_| tr(strings::THE_GITHUB_RESPONSE_IS_NOT_UTF_8).to_owned())
 }
-
-
-
-
 
 fn object_fields(json: &str) -> Vec<(String, String)> {
     let chars: Vec<char> = json.chars().collect();
@@ -756,7 +692,6 @@ fn parse_string(chars: &[char], i: &mut usize) -> Option<String> {
                     'u' => {
                         let hi = parse_hex(chars, i, 4)?;
                         if (0xD800..0xDC00).contains(&hi) {
-                            
                             let mut lo = 0u32;
                             if chars.get(*i) == Some(&'\\') && chars.get(*i + 1) == Some(&'u') {
                                 *i += 2;
@@ -861,7 +796,6 @@ mod tests {
 
     #[test]
     fn nested_objects_do_not_leak_into_top_level_fields() {
-        
         let rel = parse_release(SAMPLE).unwrap();
         assert!(!rel.name.contains("not the release name"));
         assert!(!rel.name.contains(".exe"));
@@ -950,7 +884,7 @@ mod tests {
             checksum_for(sums, "rust_shot.exe").as_deref(),
             Some("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210")
         );
-        
+
         assert!(checksum_for(sums, "RustShot-0.2.0-portable.zip").is_none());
         assert!(checksum_for("nothex  rust_shot.exe", "rust_shot.exe").is_none());
         assert!(checksum_for("0123  rust_shot.exe", "rust_shot.exe").is_none());
@@ -990,7 +924,6 @@ mod tests {
         );
     }
 
-    
     #[test]
     #[ignore = "需要访问 GitHub"]
     fn live_release_lookup_works() {

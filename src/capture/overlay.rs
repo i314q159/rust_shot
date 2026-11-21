@@ -1,5 +1,3 @@
-
-
 use crate::config::i18n::strings;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -7,8 +5,6 @@ use std::sync::Arc;
 use crate::capture::shapes::{self, Col, Px, Shape};
 use crate::capture::{Frame, PhysRect};
 use crate::config::i18n::tr;
-
-
 
 pub fn overlay_title(serial: u64) -> String {
     format!("RustShot Overlay {serial}")
@@ -95,10 +91,10 @@ enum Drag {
 pub struct Session {
     pub frame: Arc<Frame>,
     pub monitor: PhysRect,
-    
+
     title: String,
     tex: Option<egui::TextureHandle>,
-    
+
     sel: Option<egui::Rect>,
     anchor: Option<egui::Pos2>,
     tool: Tool,
@@ -112,13 +108,12 @@ pub struct Session {
     hover: Option<egui::Rect>,
     mosaic_seen: HashSet<(i32, i32)>,
     fix_tries: u32,
-    
+
     rx: f32,
     ry: f32,
-    
-    
+
     repick: bool,
-    
+
     toolbar_w: f32,
     toolbar_h: f32,
     pub outcome: Option<Outcome>,
@@ -132,7 +127,6 @@ fn clamp_rect_to(r: egui::Rect, bounds: egui::Rect) -> egui::Rect {
     let y = r.min.y.max(bounds.min.y).min(bounds.max.y - h);
     egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, h))
 }
-
 
 fn is_bright(c: egui::Color32) -> bool {
     0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32 > 150.0
@@ -159,8 +153,6 @@ fn hit_handle(sel: egui::Rect, p: egui::Pos2, tol: f32) -> Option<usize> {
 }
 
 impl Session {
-    
-    
     pub fn new(
         frame: Arc<Frame>,
         monitor: PhysRect,
@@ -185,7 +177,7 @@ impl Session {
                 None
             }
         });
-        
+
         let full_sel = full_frame.then(|| {
             egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(frame.w as f32, frame.h as f32))
         });
@@ -224,9 +216,6 @@ impl Session {
         )
     }
 
-    
-    
-    
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let screen = ctx.viewport_rect();
@@ -240,10 +229,6 @@ impl Session {
             ));
         }
 
-        
-        
-        
-        
         if self.fix_tries < 8 {
             let ok = crate::platform::win::force_rect_by_title(&self.title, self.monitor);
             self.fix_tries += 1;
@@ -285,7 +270,6 @@ impl Session {
         let to_p = |p: egui::Pos2| egui::pos2(origin.x + p.x / rx, origin.y + p.y / ry);
         let to_phys = |p: egui::Pos2| egui::pos2((p.x - origin.x) * rx, (p.y - origin.y) * ry);
 
-        
         let dim = egui::Color32::from_black_alpha(64);
         match self.sel {
             Some(sel) => {
@@ -341,7 +325,6 @@ impl Session {
             }
         }
 
-        
         if let Some(sel) = self.sel {
             let clip = egui::Rect::from_min_max(to_p(sel.min), to_p(sel.max));
             let sp = painter.with_clip_rect(clip);
@@ -350,7 +333,6 @@ impl Session {
             }
         }
 
-        
         if let Some(sel) = self.sel {
             let r = egui::Rect::from_min_max(to_p(sel.min), to_p(sel.max));
             painter.rect_stroke(
@@ -359,7 +341,7 @@ impl Session {
                 egui::Stroke::new(1.5, egui::Color32::from_rgb(64, 158, 255)),
                 egui::StrokeKind::Outside,
             );
-            
+
             let c = r.center();
             let pts = [
                 r.left_top(),
@@ -397,7 +379,6 @@ impl Session {
             );
         }
 
-        
         if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
             let guide = egui::Stroke::new(1.0, egui::Color32::from_white_alpha(70));
             if self.drag == Drag::Select || self.sel.is_none() {
@@ -418,14 +399,12 @@ impl Session {
             }
         }
 
-        
         let sel_pts = self
             .sel
             .map(|s| egui::Rect::from_min_max(to_p(s.min), to_p(s.max)));
         let mut over = self.show_toolbar(&ctx, screen, sel_pts);
         over.extend(self.show_text_editor(&ctx, rx, ry));
 
-        
         let (pressed, released) =
             ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_released()));
         let ptr = ctx.input(|i| i.pointer.interact_pos());
@@ -437,10 +416,7 @@ impl Session {
         {
             self.on_press(to_phys(p));
         }
-        
-        
-        
-        
+
         if self.drag != Drag::None {
             if let Some(p) = ptr {
                 self.on_drag(to_phys(p));
@@ -450,7 +426,6 @@ impl Session {
             }
         }
 
-        
         if let Some(p) = ptr {
             let icon = if over_ui {
                 egui::CursorIcon::Default
@@ -504,9 +479,6 @@ impl Session {
         painter.galley(pos + egui::vec2(5.0, 2.0), galley, crate::theme::text());
     }
 
-    
-    
-    
     fn on_press(&mut self, p: egui::Pos2) {
         if self.text_idx.is_some() {
             self.commit_text();
@@ -521,8 +493,6 @@ impl Session {
             }
             if sel.contains(p) {
                 match self.tool {
-                    
-                    
                     Tool::Select if self.repick => {
                         self.repick = false;
                         self.begin_selection(p);
@@ -546,15 +516,13 @@ impl Session {
                 return;
             }
         }
-        
-        
+
         if self.sel.is_some() && self.tool != Tool::Select {
             return;
         }
         self.begin_selection(p);
     }
 
-    
     fn begin_selection(&mut self, p: egui::Pos2) {
         let p = egui::pos2(
             p.x.clamp(0.0, self.frame.w as f32),
@@ -649,9 +617,6 @@ impl Session {
         self.anchor = None;
     }
 
-    
-    
-    
     fn start_shape(&mut self, p: Px) {
         let shape = match self.tool {
             Tool::Rect => Shape::Rect {
@@ -759,7 +724,7 @@ impl Session {
                     if !self.mosaic_seen.insert((gx, gy)) {
                         continue;
                     }
-                    
+
                     let mut acc = [0u32; 3];
                     let mut n = 0u32;
                     let step = 2i32;
@@ -835,9 +800,6 @@ impl Session {
         self.text_focus_done = false;
     }
 
-    
-    
-    
     fn show_text_editor(&mut self, ctx: &egui::Context, rx: f32, ry: f32) -> Vec<egui::Rect> {
         let Some(idx) = self.text_idx else {
             return Vec::new();
@@ -863,9 +825,7 @@ impl Session {
         let mut rects = Vec::new();
         let want_focus = !self.text_focus_done;
         let shapes = &mut self.shapes;
-        
-        
-        
+
         let editing = match shapes.get(idx) {
             Some(Shape::Text { color, .. }) => *color,
             _ => crate::theme::text(),
@@ -1040,9 +1000,6 @@ impl Session {
         vec![area.response.rect.expand(4.0)]
     }
 
-    
-    
-    
     fn keys(&mut self, ctx: &egui::Context) {
         let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
         if esc {
@@ -1056,7 +1013,7 @@ impl Session {
         if self.text_idx.is_some() {
             return;
         }
-        
+
         let pick = ctx.input(|i| {
             [
                 i.key_pressed(egui::Key::Num1),
@@ -1071,8 +1028,7 @@ impl Session {
         if let Some(idx) = pick.iter().position(|p| *p) {
             self.tool = Tool::all()[idx];
         }
-        
-        
+
         let copy = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)));
         if copy {
             self.export(Export::Copy);
@@ -1223,7 +1179,6 @@ mod full_frame_tests {
         assert_eq!(sel.min, egui::pos2(100.0, 100.0));
         assert_eq!(sel.size(), egui::vec2(200.0, 150.0));
 
-        
         s.on_press(egui::pos2(200.0, 175.0));
         assert!(matches!(s.drag, Drag::Move { .. }));
     }

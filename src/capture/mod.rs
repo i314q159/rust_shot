@@ -1,5 +1,3 @@
-
-
 pub(crate) mod overlay;
 pub(crate) mod shapes;
 
@@ -21,7 +19,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GA_ROOT, GetAncestor, GetCursorPos, GetWindowRect, GetWindowThreadProcessId, WindowFromPoint,
 };
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PhysRect {
     pub x: i32,
@@ -36,14 +33,13 @@ impl PhysRect {
     }
 }
 
-
 #[derive(Clone)]
 pub struct Frame {
     pub w: u32,
     pub h: u32,
-    
+
     pub rgba: Vec<u8>,
-    
+
     pub origin: PhysRect,
 }
 
@@ -63,7 +59,6 @@ impl Frame {
     }
 }
 
-
 pub fn set_dpi_aware() {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -77,7 +72,6 @@ pub fn cursor_pos() -> (i32, i32) {
     }
     (p.x, p.y)
 }
-
 
 pub fn monitor_at_cursor() -> PhysRect {
     let (x, y) = cursor_pos();
@@ -96,7 +90,6 @@ pub fn monitor_at_cursor() -> PhysRect {
     }
 }
 
-
 pub fn capture(region: PhysRect) -> Option<Frame> {
     let w = region.w.max(1);
     let h = region.h.max(1);
@@ -112,17 +105,17 @@ pub fn capture(region: PhysRect) -> Option<Frame> {
             return None;
         }
         let old = SelectObject(mem, HGDIOBJ(bmp.0));
-        
+
         let rop = ROP_CODE(SRCCOPY.0 | CAPTUREBLT.0);
         let blit_ok = BitBlt(mem, 0, 0, w, h, Some(screen), region.x, region.y, rop).is_ok();
 
         let mut bi = BITMAPINFO::default();
         bi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
         bi.bmiHeader.biWidth = w;
-        bi.bmiHeader.biHeight = -h; 
+        bi.bmiHeader.biHeight = -h;
         bi.bmiHeader.biPlanes = 1;
         bi.bmiHeader.biBitCount = 32;
-        bi.bmiHeader.biCompression = 0; 
+        bi.bmiHeader.biCompression = 0;
 
         let mut buf = vec![0u8; (w as usize) * (h as usize) * 4];
         let lines = if blit_ok {
@@ -148,7 +141,6 @@ pub fn capture(region: PhysRect) -> Option<Frame> {
             return None;
         }
 
-        
         for px in buf.as_chunks_mut::<4>().0 {
             px.swap(0, 2);
             px[3] = 255;
@@ -162,7 +154,6 @@ pub fn capture(region: PhysRect) -> Option<Frame> {
         })
     }
 }
-
 
 pub fn window_rect_at_cursor() -> Option<PhysRect> {
     let (x, y) = cursor_pos();
@@ -192,7 +183,6 @@ pub fn window_rect_at_cursor() -> Option<PhysRect> {
         Some(PhysRect::new(rect.left, rect.top, w, h))
     }
 }
-
 
 fn extended_frame(hwnd: HWND) -> Option<RECT> {
     let mut rect = RECT::default();

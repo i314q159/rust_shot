@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 use crate::config::i18n::strings;
 use std::ffi::c_void;
 
@@ -16,23 +9,20 @@ use windows::core::PCWSTR;
 
 use crate::config::i18n::{tr, tr1, tr3};
 
-
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Proxy {
-    
     #[default]
     System,
-    
+
     Direct,
-    
-    Manual { host: String, port: u16 },
+
+    Manual {
+        host: String,
+        port: u16,
+    },
 }
 
 impl Proxy {
-    
-    
-    
-    
     pub fn parse(text: &str) -> Self {
         let text = text.trim();
         if text.is_empty() {
@@ -65,7 +55,6 @@ impl Proxy {
         Self::System
     }
 
-    
     pub fn address(&self) -> Option<String> {
         match self {
             Self::Manual { host, port } => Some(format!("{host}:{port}")),
@@ -73,7 +62,6 @@ impl Proxy {
         }
     }
 
-    
     pub fn label(&self) -> String {
         match self {
             Self::System => tr(strings::SYSTEM_PROXY).to_owned(),
@@ -82,7 +70,6 @@ impl Proxy {
         }
     }
 
-    
     pub fn key(&self) -> String {
         match self {
             Self::System => "system".to_owned(),
@@ -91,13 +78,10 @@ impl Proxy {
         }
     }
 
-    
-    
     pub fn current() -> Self {
         crate::config::Config::load().proxy
     }
 }
-
 
 pub struct Session(pub *mut c_void);
 
@@ -109,15 +93,11 @@ impl Drop for Session {
     }
 }
 
-
 pub fn open(agent: &str) -> Result<Session, String> {
     open_with(&Proxy::current(), agent)
 }
 
-
 pub fn open_with(proxy: &Proxy, agent: &str) -> Result<Session, String> {
-    
-    
     let access = match proxy {
         Proxy::System => WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
         Proxy::Direct => WINHTTP_ACCESS_TYPE_NO_PROXY,
@@ -149,7 +129,6 @@ pub fn open_with(proxy: &Proxy, agent: &str) -> Result<Session, String> {
     }
     Ok(Session(raw))
 }
-
 
 pub fn hint() -> String {
     tr1(strings::PROXY_2, Proxy::current().label())
@@ -186,7 +165,7 @@ mod tests {
                 port: 8080
             }
         );
-        
+
         assert_eq!(Proxy::parse("0"), Proxy::System);
         assert_eq!(Proxy::parse("127.0.0.1:0"), Proxy::System);
         assert_eq!(Proxy::parse("127.0.0.1:70000"), Proxy::System);

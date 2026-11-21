@@ -1,5 +1,3 @@
-
-
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, GWL_EXSTYLE, GetWindowLongW, GetWindowPlacement, GetWindowRect, IsIconic,
@@ -17,7 +15,6 @@ pub fn find_by_title(title: &str) -> Option<HWND> {
     let hwnd = unsafe { FindWindowW(None, PCWSTR(t.as_ptr())) }.ok()?;
     if hwnd.is_invalid() { None } else { Some(hwnd) }
 }
-
 
 pub fn force_rect(hwnd: HWND, r: PhysRect) -> bool {
     unsafe {
@@ -55,8 +52,6 @@ pub fn force_rect_by_title(title: &str, r: PhysRect) -> bool {
     }
 }
 
-
-
 pub fn is_ready(title: &str) -> bool {
     match find_by_title(title) {
         Some(h) => unsafe { IsWindowVisible(h).as_bool() && !IsIconic(h).as_bool() },
@@ -64,20 +59,15 @@ pub fn is_ready(title: &str) -> bool {
     }
 }
 
-
 const PARK_X: i32 = -32000;
 const PARK_Y: i32 = -32000;
-
-
 
 #[derive(Clone, Copy, Debug)]
 pub struct Parked {
     pub rect: PhysRect,
-    
+
     pub app_window: bool,
 }
-
-
 
 fn normal_rect(hwnd: HWND) -> Option<PhysRect> {
     unsafe {
@@ -92,10 +82,6 @@ fn normal_rect(hwnd: HWND) -> Option<PhysRect> {
     }
 }
 
-
-
-
-
 pub fn park_offscreen(title: &str) -> Option<Parked> {
     let hwnd = find_by_title(title)?;
     let rect = normal_rect(hwnd)?;
@@ -107,7 +93,7 @@ pub fn park_offscreen(title: &str) -> Option<Parked> {
         if ex & tool == 0 {
             SetWindowLongW(hwnd, GWL_EXSTYLE, (ex | tool) & !app);
         }
-        
+
         SetWindowPos(
             hwnd,
             None,
@@ -118,18 +104,13 @@ pub fn park_offscreen(title: &str) -> Option<Parked> {
             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         )
         .ok()?;
-        
-        
-        
+
         let _ = ShowWindow(hwnd, SW_MINIMIZE);
-        
-        
-        
+
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         Some(Parked { rect, app_window })
     }
 }
-
 
 pub fn unpark(title: &str, parked: Parked) -> bool {
     let Some(hwnd) = find_by_title(title) else {
@@ -159,9 +140,6 @@ pub fn unpark(title: &str, parked: Parked) -> bool {
     }
 }
 
-
-
-
 pub fn hide_from_taskbar(title: &str) {
     let Some(hwnd) = find_by_title(title) else {
         return;
@@ -175,7 +153,6 @@ pub fn hide_from_taskbar(title: &str) {
         }
     }
 }
-
 
 pub fn show_without_activation(title: &str) -> bool {
     match find_by_title(title) {

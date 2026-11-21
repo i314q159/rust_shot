@@ -1,9 +1,6 @@
-
-
 use egui::Color32;
 
 use super::Palette;
-
 
 pub const DARK: Palette = Palette {
     bg: Color32::from_rgb(0x1A, 0x1C, 0x20),

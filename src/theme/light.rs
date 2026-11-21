@@ -1,9 +1,6 @@
-
-
 use egui::Color32;
 
 use super::Palette;
-
 
 pub const LIGHT: Palette = Palette {
     bg: Color32::from_rgb(0xF7, 0xF8, 0xFA),

@@ -1,5 +1,3 @@
-
-
 use crate::app::{APP_VERSION, App};
 use crate::capture::overlay::Tool;
 use crate::config::i18n::strings;
@@ -150,7 +148,6 @@ impl App {
                     .inner_margin(egui::Margin::same(18)),
             )
             .show(ui, |ui| {
-                
                 let footer_h = 42.0;
                 let body_h = (ui.available_height() - footer_h).max(80.0);
                 egui::ScrollArea::vertical()
@@ -199,8 +196,6 @@ impl App {
                             }
                         });
                         ui.horizontal(|ui| {
-                            
-                            
                             let path_w = (ui.available_width() - 176.0).max(80.0);
                             ui.add_sized(
                                 [path_w, 18.0],

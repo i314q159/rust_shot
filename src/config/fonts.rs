@@ -1,5 +1,3 @@
-
-
 use std::sync::{Arc, OnceLock};
 
 pub struct LoadedFont {
@@ -24,7 +22,7 @@ fn probe(path: &str, index: u32) -> Option<Vec<u8>> {
     if bytes.len() < 1024 {
         return None;
     }
-    
+
     let settings = fontdue::FontSettings {
         collection_index: index,
         ..Default::default()
@@ -47,11 +45,9 @@ fn load() -> Option<LoadedFont> {
     None
 }
 
-
 pub fn cjk() -> Option<&'static LoadedFont> {
     FONT.get_or_init(load).as_ref()
 }
-
 
 pub fn raster() -> Option<&'static fontdue::Font> {
     RASTER
@@ -66,7 +62,6 @@ pub fn raster() -> Option<&'static fontdue::Font> {
         })
         .as_ref()
 }
-
 
 pub fn install_egui_font(ctx: &egui::Context) {
     let Some(font) = cjk() else { return };
@@ -88,7 +83,6 @@ pub fn install_egui_font(ctx: &egui::Context) {
 mod tests {
     #[test]
     fn a_font_is_found_on_this_system() {
-        
         let font = super::cjk().expect("system font");
         assert!(font.bytes.len() > 100_000);
         assert!(font.index < 8);

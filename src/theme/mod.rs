@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 use crate::config::i18n::strings;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -16,49 +9,44 @@ mod light;
 pub use dark::DARK;
 pub use light::LIGHT;
 
-
 pub struct Palette {
-    
     pub bg: Color32,
-    
+
     pub card: Color32,
-    
+
     pub bar: Color32,
-    
+
     pub line: Color32,
-    
+
     pub text: Color32,
-    
+
     pub text_weak: Color32,
-    
+
     pub text_faint: Color32,
-    
+
     pub accent: Color32,
-    
+
     pub accent_soft: Color32,
-    
+
     pub ok: Color32,
-    
+
     pub warn: Color32,
-    
+
     pub hint: Color32,
-    
+
     pub widget: Color32,
-    
+
     pub widget_hover: Color32,
-    
+
     pub widget_active: Color32,
-    
+
     pub widget_stroke: Color32,
 }
 
-
 static DARK_ACTIVE: AtomicBool = AtomicBool::new(false);
-
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Preference {
-    
     #[default]
     System,
     Light,
@@ -66,7 +54,6 @@ pub enum Preference {
 }
 
 impl Preference {
-    
     pub fn key(self) -> &'static str {
         match self {
             Self::System => "system",
@@ -75,7 +62,6 @@ impl Preference {
         }
     }
 
-    
     pub fn parse(text: &str) -> Self {
         match text.trim().to_ascii_lowercase().as_str() {
             "light" => Self::Light,
@@ -93,7 +79,6 @@ impl Preference {
     }
 }
 
-
 pub fn resolve(pref: Preference) -> bool {
     match pref {
         Preference::System => system_is_dark(),
@@ -101,7 +86,6 @@ pub fn resolve(pref: Preference) -> bool {
         Preference::Dark => true,
     }
 }
-
 
 pub fn palette() -> &'static Palette {
     if DARK_ACTIVE.load(Ordering::Relaxed) {
@@ -159,12 +143,6 @@ pub fn hint() -> Color32 {
     palette().hint
 }
 
-
-
-
-
-
-
 pub fn system_is_dark() -> bool {
     use windows::Win32::Foundation::WIN32_ERROR;
     use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
@@ -190,12 +168,6 @@ pub fn system_is_dark() -> bool {
     status == WIN32_ERROR(0) && value == 0
 }
 
-
-
-
-
-
-
 pub fn apply(ctx: &egui::Context, dark: bool) {
     DARK_ACTIVE.store(dark, Ordering::Relaxed);
     ctx.set_visuals_of(egui::Theme::Light, visuals(&LIGHT, false));
@@ -219,15 +191,12 @@ fn visuals(p: &Palette, dark: bool) -> egui::Visuals {
     v.faint_bg_color = p.hint;
     v.override_text_color = Some(p.text);
     v.selection.bg_fill = p.accent_soft;
-    
-    
+
     v.selection.stroke = egui::Stroke::new(1.0, p.text);
 
     v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, p.line);
     v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, p.text_weak);
 
-    
-    
     v.widgets.inactive.weak_bg_fill = p.widget;
     v.widgets.inactive.bg_fill = p.widget;
     v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, p.line);
@@ -237,14 +206,12 @@ fn visuals(p: &Palette, dark: bool) -> egui::Visuals {
     v.widgets.active.weak_bg_fill = p.widget_active;
     v.widgets.active.bg_fill = p.widget_active;
     v.widgets.active.bg_stroke = egui::Stroke::new(1.0, p.accent);
-    
+
     v.widgets.open.weak_bg_fill = p.widget_hover;
     v.widgets.open.bg_fill = p.widget_hover;
     v.widgets.open.bg_stroke = egui::Stroke::new(1.0, p.line);
 
     if dark {
-        
-        
         v.window_stroke = egui::Stroke::new(1.0, p.line);
     }
     v
@@ -254,7 +221,6 @@ fn visuals(p: &Palette, dark: bool) -> egui::Visuals {
 mod tests {
     use super::*;
 
-    
     fn luminance(c: Color32) -> f64 {
         let channel = |v: u8| {
             let s = v as f64 / 255.0;
@@ -328,7 +294,7 @@ mod tests {
     fn themes_are_not_the_same_palette() {
         assert_ne!(LIGHT.bg, DARK.bg);
         assert_ne!(LIGHT.card, DARK.card);
-        
+
         assert!(luminance(DARK.bg) < luminance(LIGHT.bg));
         assert!(luminance(DARK.text) > luminance(LIGHT.text));
     }

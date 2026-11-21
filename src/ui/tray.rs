@@ -1,5 +1,3 @@
-
-
 use crate::config::i18n::strings;
 use crate::config::i18n::tr;
 
@@ -49,7 +47,6 @@ pub(crate) fn build_tray() -> (Option<tray_icon::TrayIcon>, Option<MenuHandles>)
             },
         )
         .with_menu(Box::new(menu))
-        
         .with_menu_on_left_click(false)
         .build()
         .ok();

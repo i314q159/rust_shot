@@ -1,6 +1,3 @@
-
-
-
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -26,7 +23,6 @@ pub const WORKER_CLASS: &str = "RustShotWorkerWnd";
 
 pub const THEME_CLASS: &str = "RustShotThemeWnd";
 
-
 pub const CMD_REGION: usize = 1;
 pub const CMD_FULL: usize = 2;
 pub const CMD_PANEL: usize = 4;
@@ -35,14 +31,14 @@ pub const CMD_CHECK_UPDATE: usize = 8;
 #[derive(Clone, Copy, Debug)]
 pub enum WorkerEvent {
     CaptureRegion,
-    
+
     CaptureFull,
-    
+
     CaptureFullOverlay,
     ShowPanel,
-    
+
     CheckUpdate,
-    
+
     ThemeChanged,
     Quit,
 }
@@ -77,7 +73,6 @@ fn emit(ev: WorkerEvent) {
     crate::app::request_repaint();
 }
 
-
 pub fn forward_to_running(cmd: usize) -> bool {
     unsafe {
         let class = wide(WORKER_CLASS);
@@ -87,7 +82,6 @@ pub fn forward_to_running(cmd: usize) -> bool {
         PostMessageW(Some(hwnd), cmd_message(), WPARAM(cmd), LPARAM(0)).is_ok()
     }
 }
-
 
 fn cmd_message() -> u32 {
     *CMD_MSG.get_or_init(registration_message)
@@ -138,9 +132,6 @@ fn worker_thread(ready: Sender<isize>) {
             }
         };
 
-        
-        
-        
         let theme_class = wide(THEME_CLASS);
         let theme_wc = WNDCLASSW {
             lpfnWndProc: Some(theme_wndproc),
@@ -164,7 +155,6 @@ fn worker_thread(ready: Sender<isize>) {
             None,
         );
 
-        
         let _ = RegisterHotKey(Some(hwnd), 1, MOD_NOREPEAT, VK_F1.0 as u32);
         let _ = RegisterHotKey(Some(hwnd), 2, MOD_NOREPEAT, VK_F2.0 as u32);
         let _ = RegisterHotKey(
@@ -236,25 +226,15 @@ unsafe extern "system" fn theme_wndproc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    
     const WM_SETTINGCHANGE: u32 = 0x001A;
     if msg == WM_SETTINGCHANGE {
-        
-        
         emit(WorkerEvent::ThemeChanged);
         return LRESULT(0);
     }
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
-
-
 static INSTANCE_MUTEX: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
-
-
-
-
-
 
 pub fn mutex_exists() -> bool {
     unsafe {
@@ -272,8 +252,6 @@ pub fn mutex_exists() -> bool {
     }
 }
 
-
-
 pub fn release_instance() {
     let raw = INSTANCE_MUTEX.swap(0, std::sync::atomic::Ordering::SeqCst);
     if raw != 0 {
@@ -282,7 +260,6 @@ pub fn release_instance() {
         }
     }
 }
-
 
 pub fn instance_exists() -> bool {
     unsafe {

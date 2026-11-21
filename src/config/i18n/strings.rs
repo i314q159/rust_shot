@@ -1,9 +1,3 @@
-
-
-
-
-
-
 #[derive(Clone, Copy, Debug)]
 pub struct Text {
     pub zh: &'static str,
@@ -660,10 +654,8 @@ pub const DARK_2: Text = Text {
     en: "dark",
 };
 
-
 pub const LANGUAGE_ZH: &str = "中文";
 pub const LANGUAGE_EN: &str = "English";
-
 
 pub const HELP_MESSAGE: Text = Text {
     zh: "RustShot\n\n\
@@ -685,7 +677,6 @@ pub const HELP_MESSAGE: Text = Text {
          --selftest <png>  render a test image and exit\n\n\
          Hotkeys: F1 region - F2 full screen - Ctrl+Alt+Q quit",
 };
-
 
 pub const TIPS: [Text; 5] = [
     Text {
@@ -710,30 +701,25 @@ pub const TIPS: [Text; 5] = [
     },
 ];
 
-
 pub const LICENSE_CREDIT: Text = Text {
     zh: "RustShot v{} · 作者 {} · MIT License",
     en: "RustShot v{} · by {} · MIT License",
 };
-
 
 pub const UPDATE_CREDIT: Text = Text {
     zh: "当前版本 v{} · 仓库 {}",
     en: "Current v{} · repo {}",
 };
 
-
 pub const NET_ERROR: Text = Text {
     zh: "{}（error {} / {}）",
     en: "{} (error {} / {})",
 };
 
-
 pub const UPDATE_NET_ERROR: Text = Text {
     zh: "{}（{}）",
     en: "{} ({})",
 };
-
 
 pub const SELFTEST: Text = Text {
     zh: "RustShot 标注测试：文字 / 中文 / 123",

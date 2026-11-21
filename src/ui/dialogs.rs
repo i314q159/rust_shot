@@ -1,12 +1,9 @@
-
-
 use crate::app::{APP_AUTHOR, APP_VERSION, App, Install, LICENSE_TEXT};
 use crate::config::i18n::strings;
 use crate::config::i18n::{tr, tr1, tr2};
 use crate::update::{self, Status as UpdateStatus};
 
 impl App {
-    
     pub(crate) fn proxy_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_proxy {
             return;
@@ -45,9 +42,7 @@ impl App {
                                 .hint_text("12334")
                                 .desired_width(56.0),
                         );
-                        
-                        
-                        
+
                         let valid = self.manual_proxy().is_some();
                         if host_edit.changed() || port_edit.changed() {
                             self.proxy_bad = !valid;
@@ -153,7 +148,6 @@ impl App {
         }
     }
 
-    
     pub(crate) fn update_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_update {
             return;

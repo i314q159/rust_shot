@@ -1,9 +1,3 @@
-
-
-
-
-
-
 const K: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -14,7 +8,6 @@ const K: [u32; 64] = [
     0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
-
 
 pub struct Sha256 {
     state: [u32; 8],
@@ -67,15 +60,13 @@ impl Sha256 {
         }
     }
 
-    
     pub fn finish_hex(mut self) -> String {
         let bit_len = self.total.wrapping_mul(8);
         self.update(&[0x80]);
         while self.buf_len != 56 {
             self.update(&[0x00]);
         }
-        
-        
+
         self.buf[56..64].copy_from_slice(&bit_len.to_be_bytes());
         let block = self.buf;
         self.compress(&block);
@@ -128,7 +119,6 @@ impl Sha256 {
     }
 }
 
-
 #[cfg(test)]
 pub fn hex(data: &[u8]) -> String {
     let mut h = Sha256::new();
@@ -142,7 +132,6 @@ mod tests {
 
     #[test]
     fn matches_the_reference_vectors() {
-        
         assert_eq!(
             hex(b""),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -174,7 +163,6 @@ mod tests {
 
     #[test]
     fn handles_block_boundaries() {
-        
         for len in [55usize, 56, 63, 64, 65, 119, 120, 128] {
             let data = vec![0x5au8; len];
             let one = hex(&data);

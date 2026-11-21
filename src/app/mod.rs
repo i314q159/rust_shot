@@ -1,5 +1,3 @@
-
-
 pub(crate) mod worker;
 
 use crate::config::i18n::strings;
@@ -13,19 +11,15 @@ use crate::config::i18n::{tr, tr1};
 use crate::ui::tray::{MenuHandles, build_tray};
 use crate::update::{self, Status as UpdateStatus};
 
-
 pub fn panel_title() -> &'static str {
     crate::config::i18n::tr(strings::RUSTSHOT_SCREENSHOT)
 }
-
-
 
 pub(crate) const LICENSE_TEXT: &str = include_str!("../../LICENSE-MIT.md");
 pub(crate) const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub(crate) const APP_AUTHOR: &str = "i314q159";
 
 static UI_CTX: OnceLock<egui::Context> = OnceLock::new();
-
 
 pub fn request_repaint() {
     if let Some(ctx) = UI_CTX.get() {
@@ -38,12 +32,11 @@ pub enum Start {
     Panel,
     Region,
     Full,
-    
+
     Tray,
-    
+
     Check,
 }
-
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Install {
@@ -54,14 +47,12 @@ pub(crate) enum Install {
     Failed(String),
 }
 
-
 pub(crate) enum InstallEvent {
     Progress(u64, u64),
     Verifying,
     Failed(String),
     Done,
 }
-
 
 pub(crate) enum SaveResult {
     Saved(PathBuf),
@@ -78,58 +69,57 @@ pub struct App {
     pub(crate) tray: Option<tray_icon::TrayIcon>,
     pub(crate) menu: Option<MenuHandles>,
     pub(crate) start: Option<Start>,
-    
+
     pub(crate) quitting: bool,
-    
+
     pub(crate) waiting_panel: bool,
-    
+
     pub(crate) restore_frames: u8,
-    
+
     pub(crate) serial: u64,
-    
+
     pub(crate) remiminimize: bool,
-    
+
     pub(crate) panel_park: Option<crate::platform::win::Parked>,
-    
+
     pub(crate) paint_hidden_sent: bool,
-    
+
     pub(crate) save_rx: Option<std::sync::mpsc::Receiver<SaveResult>>,
-    
+
     pub(crate) dir_rx: Option<std::sync::mpsc::Receiver<Option<PathBuf>>>,
-    
+
     pub(crate) menu_events: Arc<Mutex<Vec<muda::MenuId>>>,
-    
+
     pub(crate) tray_events: Arc<Mutex<Vec<tray_icon::TrayIconEvent>>>,
-    
+
     pub(crate) show_license: bool,
-    
+
     pub(crate) theme_pref: crate::theme::Preference,
-    
+
     pub(crate) lang_pref: crate::config::i18n::Preference,
-    
+
     pub(crate) update: UpdateStatus,
-    
+
     pub(crate) update_rx: Option<std::sync::mpsc::Receiver<UpdateStatus>>,
-    
+
     pub(crate) show_update: bool,
-    
+
     pub(crate) auto_update: crate::update::AutoUpdate,
-    
+
     pub(crate) proxy: crate::config::proxy::Proxy,
-    
+
     pub(crate) proxy_host: String,
-    
+
     pub(crate) proxy_port: String,
-    
-    
+
     pub(crate) proxy_mode: u8,
-    
+
     pub(crate) proxy_bad: bool,
-    
+
     pub(crate) show_proxy: bool,
-    
+
     pub(crate) install: Install,
-    
+
     pub(crate) install_rx: Option<std::sync::mpsc::Receiver<InstallEvent>>,
 }
 
@@ -138,8 +128,7 @@ impl App {
         let _ = UI_CTX.set(cc.egui_ctx.clone());
         crate::config::fonts::install_egui_font(&cc.egui_ctx);
         let cfg = crate::config::Config::load();
-        
-        
+
         if !crate::config::exists() {
             cfg.save();
         }
@@ -156,7 +145,7 @@ impl App {
         cc.egui_ctx.all_styles_mut(|style| {
             style.spacing.item_spacing = egui::vec2(8.0, 8.0);
             style.spacing.button_padding = egui::vec2(10.0, 6.0);
-            
+
             style.spacing.scroll.floating = false;
             style.spacing.scroll.foreground_color = true;
             style.spacing.scroll.bar_width = 9.0;
@@ -167,8 +156,6 @@ impl App {
         let (tray, menu) = build_tray();
         crate::platform::util::log(&format!("app created, tray={}", tray.is_some()));
 
-        
-        
         let panel_park = if matches!(start, Start::Tray | Start::Check) {
             let parked = crate::platform::win::park_offscreen(panel_title());
             crate::platform::util::log(&format!(
@@ -180,9 +167,6 @@ impl App {
             None
         };
 
-        
-        
-        
         let menu_events: Arc<Mutex<Vec<muda::MenuId>>> = Arc::new(Mutex::new(Vec::new()));
         let tray_events: Arc<Mutex<Vec<tray_icon::TrayIconEvent>>> =
             Arc::new(Mutex::new(Vec::new()));
@@ -255,7 +239,6 @@ impl App {
         }
     }
 
-    
     pub(crate) fn check_update(&mut self) {
         if self.update_rx.is_some() {
             return;
@@ -266,12 +249,7 @@ impl App {
         self.status = tr(strings::CHECKING_FOR_UPDATES).to_owned();
     }
 
-    
-    
-    
-    
     fn refresh_theme(&mut self, ctx: &egui::Context) {
-        
         if self.theme_pref != crate::theme::Preference::System {
             return;
         }
@@ -284,7 +262,6 @@ impl App {
         ctx.request_repaint();
     }
 
-    
     pub(crate) fn set_theme(&mut self, ctx: &egui::Context, pref: crate::theme::Preference) {
         self.theme_pref = pref;
         let dark = crate::theme::resolve(pref);
@@ -299,12 +276,11 @@ impl App {
         ctx.request_repaint();
     }
 
-    
     pub(crate) fn set_lang(&mut self, ctx: &egui::Context, pref: crate::config::i18n::Preference) {
         self.lang_pref = pref;
         crate::config::i18n::set(crate::config::i18n::resolve(pref));
         self.persist();
-        
+
         if let Some(m) = &self.menu {
             m.region.set_text(tr(strings::REGION_CAPTURE));
             m.full.set_text(tr(strings::FULL_SCREEN));
@@ -324,7 +300,6 @@ impl App {
         ctx.request_repaint();
     }
 
-    
     pub(crate) fn manual_proxy(&self) -> Option<crate::config::proxy::Proxy> {
         let host = self.proxy_host.trim();
         let port = self
@@ -342,8 +317,6 @@ impl App {
         })
     }
 
-    
-    
     pub(crate) fn apply_proxy(&mut self, mode: u8) {
         self.proxy_mode = mode;
         match mode {
@@ -352,8 +325,6 @@ impl App {
                 self.proxy_bad = false;
             }
             2 => {
-                
-                
                 if let Some(parsed) = self.manual_proxy() {
                     self.proxy = parsed;
                     self.proxy_bad = false;
@@ -404,16 +375,13 @@ impl App {
         let _ = std::thread::Builder::new()
             .name("rustshot-update-dl".into())
             .spawn(move || {
-                
-                
                 let asset = crate::update::setup_name(&rel.version);
                 let dest = crate::update::update_dir().join(&asset);
                 let result = (|| -> Result<(), String> {
                     let expected = crate::update::expected_sha(&rel.version, &asset)?;
                     let url = crate::update::asset_url(&rel.version, &asset);
                     let _ = tx.send(InstallEvent::Progress(0, 0));
-                    
-                    
+
                     let mut attempt = 0;
                     while let Err(e) = crate::update::download(&url, &dest, |got, total| {
                         let _ = tx.send(InstallEvent::Progress(got, total));
@@ -493,7 +461,6 @@ impl App {
         }
     }
 
-    
     fn quit_for_update(&mut self, ctx: &egui::Context) {
         crate::platform::util::log("update: verified, quitting so the helper can install");
         crate::app::worker::release_instance();
@@ -542,7 +509,6 @@ impl App {
         }
     }
 
-    
     pub(crate) fn pick_dir(&mut self) {
         if self.dir_rx.is_some() {
             self.status = tr(strings::THE_FOLDER_PICKER_IS_ALREADY_OPEN).to_owned();
@@ -619,10 +585,6 @@ impl App {
         }
     }
 
-    
-    
-    
-    
     pub(crate) fn hide_to_tray(&mut self, ctx: &egui::Context) {
         if self.panel_park.is_some() {
             return;
@@ -636,7 +598,7 @@ impl App {
                 ));
                 ctx.request_repaint();
             }
-            
+
             None => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
         }
     }
@@ -697,10 +659,6 @@ impl App {
         }
     }
 
-    
-    
-    
-    
     pub(crate) fn begin_capture(&mut self, ctx: &egui::Context, tool: Tool, full_frame: bool) {
         let monitor = capture::monitor_at_cursor();
         let hover = if full_frame {
@@ -724,11 +682,7 @@ impl App {
                     full_frame,
                 ));
                 self.status.clear();
-                
-                
-                
-                
-                
+
                 if !crate::platform::win::is_ready(panel_title()) {
                     if self.panel_park.is_some() {
                         crate::platform::win::show_without_activation(panel_title());
@@ -745,8 +699,6 @@ impl App {
         }
     }
 
-    
-    
     pub(crate) fn capture_full(&mut self) {
         let monitor = capture::monitor_at_cursor();
         match capture::capture(monitor) {
@@ -766,9 +718,7 @@ impl App {
         if self.session.is_none() {
             return;
         }
-        
-        
-        
+
         if self.waiting_panel {
             if self.restore_frames > 0 {
                 self.restore_frames -= 1;
@@ -788,8 +738,7 @@ impl App {
                 return;
             };
             let mon = sess.monitor;
-            
-            
+
             let id = egui::ViewportId::from_hash_of(("rustshot_overlay", self.serial));
             let title = overlay::overlay_title(self.serial);
             let builder = egui::ViewportBuilder::default()
@@ -825,7 +774,6 @@ impl App {
             self.status = tr(strings::CANCELLED).to_owned();
         }
         if self.session.is_none() && self.remiminimize {
-            
             self.remiminimize = false;
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
         }
@@ -854,7 +802,7 @@ impl App {
                 }
                 let dir = self.save_dir.clone();
                 let stem = format!("RustShot_{}", crate::platform::util::timestamp());
-                
+
                 let file_name = crate::config::unique_png(&dir, &stem)
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -862,9 +810,7 @@ impl App {
                 let (tx, rx) = std::sync::mpsc::channel();
                 self.save_rx = Some(rx);
                 self.status = tr(strings::CHOOSING_WHERE_TO_SAVE).to_owned();
-                
-                
-                
+
                 std::thread::Builder::new()
                     .name("rustshot-save".into())
                     .spawn(move || {
@@ -934,9 +880,7 @@ fn save_png(img: &image::RgbaImage, path: &std::path::Path) -> Result<(), String
 }
 
 impl eframe::App for App {
-    
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        
         if ctx.input(|i| i.viewport().close_requested()) && !self.quitting {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.hide_to_tray(ctx);
@@ -950,8 +894,6 @@ impl eframe::App for App {
         self.pump_worker(ctx);
         self.pump_tray(ctx);
         if self.panel_park.is_some() {
-            
-            
             crate::platform::win::hide_from_taskbar(panel_title());
         }
         if let Some(start) = self.start.take() {
@@ -973,8 +915,6 @@ impl eframe::App for App {
             }
         }
         if self.session.is_some() && !self.paint_hidden_sent {
-            
-            
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaintWhileHidden);
             self.paint_hidden_sent = true;
         }
@@ -988,7 +928,6 @@ impl eframe::App for App {
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        
         let c = visuals.panel_fill;
         [
             c.r() as f32 / 255.0,

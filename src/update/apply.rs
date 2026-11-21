@@ -1,13 +1,3 @@
-
-
-
-
-
-
-
-
-
-
 use crate::config::i18n::strings;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -22,10 +12,6 @@ use windows::core::PCWSTR;
 
 use crate::config::i18n::tr1;
 
-
-
-
-
 pub fn run(parent_pid: u32, source: &Path, app: &Path) -> ! {
     let exe = app.to_path_buf();
     crate::platform::util::log(&format!(
@@ -37,8 +23,6 @@ pub fn run(parent_pid: u32, source: &Path, app: &Path) -> ! {
 
     wait_for(parent_pid, Duration::from_secs(20));
 
-    
-    
     let started = Instant::now();
     while crate::app::worker::mutex_exists() && started.elapsed() < Duration::from_secs(15) {
         std::thread::sleep(Duration::from_millis(120));
@@ -48,16 +32,11 @@ pub fn run(parent_pid: u32, source: &Path, app: &Path) -> ! {
         crate::app::worker::mutex_exists()
     ));
 
-    
-    
     std::thread::sleep(Duration::from_millis(900));
 
-    
-    
     let installed = crate::update::installed_copy_at(&exe);
     let ok = installed
         && (run_setup(source) || {
-            
             std::thread::sleep(Duration::from_secs(3));
             run_setup(source)
         });
@@ -65,15 +44,11 @@ pub fn run(parent_pid: u32, source: &Path, app: &Path) -> ! {
         "apply update finished ok={ok} installed={installed}"
     ));
 
-    
-    
     if let Err(e) = std::process::Command::new(&exe).arg("--panel").spawn() {
         crate::platform::util::log(&format!("apply update: cannot restart the app: {e}"));
     }
     std::process::exit(if ok { 0 } else { 1 });
 }
-
-
 
 fn wait_for(pid: u32, timeout: Duration) {
     if pid == 0 {
@@ -87,12 +62,10 @@ fn wait_for(pid: u32, timeout: Duration) {
     let _ = unsafe { WaitForSingleObject(handle.0, millis) };
 }
 
-
 fn run_setup(setup: &Path) -> bool {
     let verb = crate::platform::util::wide("runas");
     let file = crate::platform::util::wide(&setup.display().to_string());
-    
-    
+
     let log_path = crate::update::update_dir().join("install.log");
     let params = crate::platform::util::wide(&format!(
         "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCLOSEAPPLICATIONS /LOG=\"{}\"",
@@ -117,8 +90,6 @@ fn run_setup(setup: &Path) -> bool {
     };
 
     if unsafe { windows::Win32::UI::Shell::ShellExecuteExW(&mut info) }.is_err() {
-        
-        
         crate::platform::util::log(
             "apply update: ShellExecuteEx failed (user cancelled or blocked)",
         );
@@ -129,14 +100,12 @@ fn run_setup(setup: &Path) -> bool {
     }
     let process = Handle(info.hProcess);
 
-    
     let _ = unsafe { WaitForSingleObject(process.0, 10 * 60 * 1000) };
     let mut code = 0u32;
     let _ = unsafe { GetExitCodeProcess(process.0, &mut code) };
     crate::platform::util::log(&format!("apply update: setup exit code {code}"));
     code == 0
 }
-
 
 pub fn spawn_helper(source: &Path) -> Result<(), String> {
     let exe =
@@ -150,7 +119,6 @@ pub fn spawn_helper(source: &Path) -> Result<(), String> {
         .map_err(|e| tr1(strings::CANNOT_START_THE_UPDATER, e))
 }
 
-
 struct Handle(HANDLE);
 
 impl Drop for Handle {
@@ -160,8 +128,6 @@ impl Drop for Handle {
         }
     }
 }
-
-
 
 #[allow(dead_code)]
 fn is_signalled(code: u32) -> bool {

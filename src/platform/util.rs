@@ -1,13 +1,9 @@
-
-
 use std::io::Write;
 use std::path::PathBuf;
-
 
 pub fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
-
 
 pub fn timestamp() -> String {
     let st = unsafe { windows::Win32::System::SystemInformation::GetLocalTime() };
@@ -17,7 +13,6 @@ pub fn timestamp() -> String {
     )
 }
 
-
 pub fn default_save_dir() -> PathBuf {
     let home = std::env::var_os("USERPROFILE")
         .map(PathBuf::from)
@@ -25,14 +20,12 @@ pub fn default_save_dir() -> PathBuf {
     home.join("Pictures").join("RustShot")
 }
 
-
 pub fn log_path() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
     base.join("RustShot").join("rustshot.log")
 }
-
 
 pub fn log(msg: &str) {
     let path = log_path();
@@ -52,7 +45,6 @@ pub fn log(msg: &str) {
         let _ = writeln!(f, "[{}] {}", timestamp(), msg);
     }
 }
-
 
 pub fn install_panic_logger() {
     std::panic::set_hook(Box::new(|info| {
