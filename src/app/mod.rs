@@ -365,10 +365,6 @@ impl App {
         if self.install_rx.is_some() {
             return;
         }
-        if !crate::update::installed_copy() {
-            self.status = tr(strings::PORTABLE_BUILDS_DO_NOT_SELF_UPDATE_DOWNLOAD_THE).to_owned();
-            return;
-        }
         let UpdateStatus::Newer(rel) = self.update.clone() else {
             return;
         };

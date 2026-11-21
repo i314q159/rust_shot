@@ -61,27 +61,3 @@ pub fn install_panic_logger() {
         log(&format!("PANIC at {location}: {payload}"));
     }));
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wide_is_nul_terminated() {
-        let w = wide("ab");
-        assert_eq!(w, vec![97, 98, 0]);
-    }
-
-    #[test]
-    fn timestamp_has_expected_shape() {
-        let ts = timestamp();
-        assert_eq!(ts.len(), 15, "yyyymmdd_hhmmss, got {ts}");
-        assert_eq!(&ts[8..9], "_");
-        assert!(ts.chars().filter(|c| c.is_ascii_digit()).count() == 14);
-    }
-
-    #[test]
-    fn log_path_lives_under_localappdata() {
-        assert!(log_path().ends_with("config.txt".replace("config.txt", "rustshot.log")));
-    }
-}

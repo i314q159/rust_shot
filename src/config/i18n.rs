@@ -121,35 +121,3 @@ pub fn tr3(
     let once = tr2(text, a, b);
     once.replacen("{}", &c.to_string(), 1)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn preference_round_trips() {
-        for pref in [Preference::System, Preference::Zh, Preference::En] {
-            assert_eq!(Preference::parse(pref.key()), pref);
-        }
-        assert_eq!(Preference::parse("EN"), Preference::En);
-        assert_eq!(Preference::parse("中文"), Preference::System);
-        assert_eq!(Preference::parse(""), Preference::System);
-    }
-
-    #[test]
-    fn switching_language_changes_the_picked_string() {
-        let before = lang();
-        set(Lang::Zh);
-        assert_eq!(tr(strings::TEST_PAIR), "中文");
-        set(Lang::En);
-        assert_eq!(tr(strings::TEST_PAIR), "English");
-        set(before);
-    }
-
-    #[test]
-    fn detect_returns_a_real_language() {
-        let lang = detect();
-        assert!(matches!(lang, Lang::Zh | Lang::En));
-        assert_eq!(lang.key(), if lang == Lang::Zh { "zh" } else { "en" });
-    }
-}

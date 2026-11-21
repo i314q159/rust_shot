@@ -355,18 +355,7 @@ impl App {
                         self.install,
                         Install::Downloading { .. } | Install::Verifying | Install::Launching
                     );
-                    if matches!(current, UpdateStatus::Newer(_)) && !crate::update::installed_copy()
-                    {
-                        ui.label(
-                            egui::RichText::new(tr(
-                                strings::PORTABLE_BUILDS_DO_NOT_SELF_UPDATE_DOWNLOAD_THE_2,
-                            ))
-                            .size(11.0)
-                            .color(crate::theme::text_faint()),
-                        );
-                    }
                     if matches!(current, UpdateStatus::Newer(_))
-                        && crate::update::installed_copy()
                         && !installing
                         && ui
                             .add_enabled(

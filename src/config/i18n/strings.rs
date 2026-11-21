@@ -132,10 +132,6 @@ pub const DOWNLOADING_THE_UPDATE: Text = Text {
     zh: "正在下载更新…",
     en: "Downloading the update…",
 };
-pub const PORTABLE_BUILDS_DO_NOT_SELF_UPDATE_DOWNLOAD_THE: Text = Text {
-    zh: "便携版不自动更新：请从发布页下载新的便携包",
-    en: "Portable builds do not self-update: download the new portable zip from the releases page",
-};
 pub const PROXY: Text = Text {
     zh: "代理：{}",
     en: "Proxy: {}",
@@ -232,11 +228,6 @@ pub const SELECT: Text = Text {
     en: "Select",
 };
 
-#[cfg(test)]
-pub const TEST_PAIR: Text = Text {
-    zh: "中文",
-    en: "English",
-};
 pub const FOLLOW_SYSTEM: Text = Text {
     zh: "跟随系统",
     en: "Follow system",
@@ -292,10 +283,6 @@ pub const UPDATE_NOW: Text = Text {
 pub const RETRY_UPDATE: Text = Text {
     zh: "重试更新",
     en: "Retry update",
-};
-pub const PORTABLE_BUILDS_DO_NOT_SELF_UPDATE_DOWNLOAD_THE_2: Text = Text {
-    zh: "便携版不自动更新，请下载新的便携包",
-    en: "Portable builds do not self-update; download the new portable zip",
 };
 pub const UPDATE_FAILED_2: Text = Text {
     zh: "更新失败",
@@ -601,11 +588,6 @@ pub const THE_RELEASES_PAGE_FAILED_TOO: Text = Text {
     zh: "{}（发布页也读取失败：{}）",
     en: "{} (the releases page failed too: {})",
 };
-#[cfg(debug_assertions)]
-pub const COULD_NOT_READ_THE_TEST_PAYLOAD: Text = Text {
-    zh: "读取测试数据失败：{}",
-    en: "could not read the test payload: {}",
-};
 pub const THE_DOWNLOADED_FILE_IS_EMPTY: Text = Text {
     zh: "下载到的文件是空的",
     en: "the downloaded file is empty",
@@ -673,8 +655,7 @@ pub const HELP_MESSAGE: Text = Text {
          --capture, -c     立即区域截图\n\
          --full, -f        立即全屏截图到剪贴板\n\
          --check-update    检查更新（发现新版本时按 auto_update 设置处理）\n\
-         --tray, --silent  同“无参数”，开机自启用\n\
-         --selftest <png>  离屏渲染一张测试图并退出\n\n\
+         --tray, --silent  同“无参数”，开机自启用\n\n\
          全局热键：F1 区域截图 · F2 全屏 · Ctrl+Alt+Q 退出",
     en: "RustShot\n\n\
          (no args)         start in the tray (already running: exit quietly)\n\
@@ -682,8 +663,7 @@ pub const HELP_MESSAGE: Text = Text {
          --capture, -c     region capture right away\n\
          --full, -f        full screen to the clipboard (no overlay)\n\
          --check-update    check for updates (honours auto_update)\n\
-         --tray, --silent  same as no arguments (used by autostart)\n\
-         --selftest <png>  render a test image and exit\n\n\
+         --tray, --silent  same as no arguments (used by autostart)\n\n\
          Hotkeys: F1 region - F2 full screen - Ctrl+Alt+Q quit",
 };
 
@@ -728,9 +708,4 @@ pub const NET_ERROR: Text = Text {
 pub const UPDATE_NET_ERROR: Text = Text {
     zh: "{}（{}）",
     en: "{} ({})",
-};
-
-pub const SELFTEST: Text = Text {
-    zh: "RustShot 标注测试：文字 / 中文 / 123",
-    en: "RustShot annotation test: text / English / 123",
 };

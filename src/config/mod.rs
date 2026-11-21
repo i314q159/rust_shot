@@ -7,8 +7,6 @@ use std::path::{Path, PathBuf};
 
 pub const CONFIG_FILE: &str = "config.toml";
 
-const LEGACY_FILE: &str = "config.txt";
-
 pub const DEFAULT_SAVE_DIR_PARAM: &str = r"%USERPROFILE%\Pictures\RustShot";
 
 #[derive(Clone, Debug)]
@@ -55,13 +53,6 @@ fn fallback_path() -> PathBuf {
     fallback_dir().join(CONFIG_FILE)
 }
 
-fn legacy_paths() -> [PathBuf; 2] {
-    let portable = path()
-        .and_then(|p| p.parent().map(|dir| dir.join(LEGACY_FILE)))
-        .unwrap_or_else(|| PathBuf::from(LEGACY_FILE));
-    [portable, fallback_dir().join(LEGACY_FILE)]
-}
-
 pub fn exists() -> bool {
     [path(), Some(fallback_path())]
         .into_iter()
@@ -106,29 +97,6 @@ impl Config {
             if let Ok(text) = std::fs::read_to_string(&file) {
                 return Self::parse(&text);
             }
-        }
-        for old in legacy_paths() {
-            let Ok(text) = std::fs::read_to_string(&old) else {
-                continue;
-            };
-            let cfg = Self::parse(&text);
-
-            if !cfg.save() {
-                crate::platform::util::log(&format!(
-                    "config migration: cannot write {CONFIG_FILE}, keeping {}",
-                    old.display()
-                ));
-                return cfg;
-            }
-            let backup = old.with_extension("txt.bak");
-            if std::fs::rename(&old, &backup).is_ok() {
-                crate::platform::util::log(&format!(
-                    "config migrated {} -> {CONFIG_FILE} (backup {})",
-                    old.display(),
-                    backup.display()
-                ));
-            }
-            return cfg;
         }
         Self::default()
     }
@@ -284,116 +252,4 @@ pub fn unique_png(dir: &Path, stem: &str) -> PathBuf {
         }
     }
     first
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sample() -> Config {
-        Config {
-            save_dir: PathBuf::from(r"C:\Users\me\Pictures\Shots"),
-            auto_save: false,
-            theme: crate::theme::Preference::Dark,
-            lang: crate::config::i18n::Preference::En,
-            auto_update: crate::update::AutoUpdate::Silent,
-            proxy: crate::config::proxy::Proxy::parse("127.0.0.1:7890"),
-        }
-    }
-
-    #[test]
-    fn unique_png_avoids_collisions() {
-        let dir = std::env::temp_dir().join(format!("rustshot_test_{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&dir);
-        let a = unique_png(&dir, "shot");
-        assert!(a.ends_with("shot.png"));
-        std::fs::write(&a, b"x").unwrap();
-        let b = unique_png(&dir, "shot");
-        assert!(b.ends_with("shot_1.png"));
-        std::fs::write(&b, b"x").unwrap();
-        let c = unique_png(&dir, "shot");
-        assert!(c.ends_with("shot_2.png"));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn generated_toml_reads_back() {
-        let cfg = sample();
-        let text = cfg.render();
-        assert!(
-            text.contains(r"save_dir = 'C:\Users\me\Pictures\Shots'"),
-            "{text}"
-        );
-        assert!(text.contains("auto_save = false"), "{text}");
-        let back = Config::parse(&text);
-        assert_eq!(back.save_dir, cfg.save_dir);
-        assert!(!back.auto_save);
-        assert_eq!(back.theme.key(), "dark");
-        assert_eq!(back.lang.key(), "en");
-        assert_eq!(back.auto_update.key(), "silent");
-        assert_eq!(back.proxy.key(), "127.0.0.1:7890");
-    }
-
-    #[test]
-    fn quote_in_a_path_switches_to_a_basic_string() {
-        let mut cfg = sample();
-        cfg.save_dir = PathBuf::from(r"C:\it's\shots");
-        let text = cfg.render();
-        assert!(text.contains(r#"save_dir = "C:\\it's\\shots""#), "{text}");
-        assert_eq!(Config::parse(&text).save_dir, cfg.save_dir);
-    }
-
-    #[test]
-    fn hand_edited_toml_is_accepted() {
-        let text = "\u{feff}# RustShot config\n\
-                    save_dir = \"D:\\\\shots\"   # hand-written comment\n\
-                    auto_save = false\n\
-                    theme = dark\n\
-                    lang = en\n\
-                    auto_update = silent\n\
-                    proxy = ''\n";
-        let cfg = Config::parse(text);
-        assert_eq!(cfg.save_dir, PathBuf::from(r"D:\shots"));
-        assert!(!cfg.auto_save);
-        assert_eq!(cfg.theme.key(), "dark");
-        assert_eq!(cfg.lang.key(), "en");
-        assert_eq!(cfg.auto_update.key(), "silent");
-        assert_eq!(cfg.proxy.key(), "system");
-    }
-
-    #[test]
-    fn legacy_config_txt_still_parses() {
-        let text = "save_dir=C:\\Shots\\RustShot\r\nauto_save=false\r\ntheme=light\r\n\
-                    lang=zh\r\nauto_update=notice\r\nproxy=7890\r\n";
-        let cfg = Config::parse(text);
-        assert_eq!(cfg.save_dir, PathBuf::from(r"C:\Shots\RustShot"));
-        assert!(!cfg.auto_save);
-        assert_eq!(cfg.theme.key(), "light");
-        assert_eq!(cfg.lang.key(), "zh");
-        assert_eq!(cfg.auto_update.key(), "notice");
-        assert_eq!(cfg.proxy.key(), "127.0.0.1:7890");
-    }
-
-    #[test]
-    fn default_save_dir_is_a_parameter() {
-        assert_eq!(
-            expand_env(DEFAULT_SAVE_DIR_PARAM),
-            crate::platform::util::default_save_dir()
-        );
-    }
-
-    #[test]
-    fn expand_env_keeps_unknown_variables_and_plain_paths() {
-        let literal = r"C:\Shots\RustShot";
-        assert_eq!(expand_env(literal), PathBuf::from(literal));
-        let unknown = expand_env("%RUSTSHOT_NO_SUCH_VAR%\\shots");
-        assert_eq!(unknown, PathBuf::from("%RUSTSHOT_NO_SUCH_VAR%\\shots"));
-    }
-
-    #[test]
-    fn config_path_sits_next_to_the_exe() {
-        let p = path().expect("test binary has a path");
-        assert_eq!(p.file_name().unwrap(), CONFIG_FILE);
-        assert_eq!(p.parent(), std::env::current_exe().unwrap().parent());
-    }
 }

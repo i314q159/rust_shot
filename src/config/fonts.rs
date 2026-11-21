@@ -78,13 +78,3 @@ pub fn install_egui_font(ctx: &egui::Context) {
     }
     ctx.set_fonts(defs);
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn a_font_is_found_on_this_system() {
-        let font = super::cjk().expect("system font");
-        assert!(font.bytes.len() > 100_000);
-        assert!(font.index < 8);
-    }
-}

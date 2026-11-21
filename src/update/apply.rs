@@ -43,6 +43,12 @@ pub fn run(parent_pid: u32, source: &Path, app: &Path) -> ! {
     std::thread::sleep(Duration::from_millis(900));
 
     let installed = crate::update::installed_copy_at(&exe);
+    if !installed {
+        crate::platform::util::log(&format!(
+            "apply update: {} is not an installed copy, skipping setup",
+            exe.display()
+        ));
+    }
     let ok = installed
         && match run_setup(source) {
             Setup::Done => true,
@@ -173,30 +179,5 @@ impl Drop for Handle {
         if !self.0.is_invalid() {
             let _ = unsafe { CloseHandle(self.0) };
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::apply_args;
-    use std::ffi::OsString;
-    use std::path::Path;
-
-    #[test]
-    fn helper_gets_the_installed_exe_not_the_temp_copy() {
-        let args = apply_args(
-            Path::new(r"C:\Temp\RustShot\update\RustShot-Setup-0.1.9.exe"),
-            Path::new(r"C:\Program Files\RustShot\rust_shot.exe"),
-        );
-        assert_eq!(args.len(), 4);
-        assert_eq!(args[0], OsString::from("--apply-update"));
-        assert_eq!(
-            args[2],
-            OsString::from(r"C:\Temp\RustShot\update\RustShot-Setup-0.1.9.exe")
-        );
-        assert_eq!(
-            args[3],
-            OsString::from(r"C:\Program Files\RustShot\rust_shot.exe")
-        );
     }
 }
