@@ -7,6 +7,7 @@
 use std::ffi::c_void;
 use std::sync::mpsc::{Receiver, channel};
 
+use crate::i18n::{tr, tr1, tr2};
 use windows::Win32::Networking::WinHttp::{
     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_OPTION_URL,
     WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle, WinHttpConnect,
@@ -92,7 +93,13 @@ pub fn fetch_latest() -> Result<Release, String> {
     // "update available" dialog is verifiable without bumping the version.
     #[cfg(debug_assertions)]
     if let Some(path) = std::env::var_os("RUSTSHOT_UPDATE_JSON") {
-        let text = std::fs::read_to_string(&path).map_err(|e| format!("读取测试数据失败：{e}"))?;
+        let text = std::fs::read_to_string(&path).map_err(|e| {
+            tr1(
+                "读取测试数据失败：{}",
+                "could not read the test payload: {}",
+                e,
+            )
+        })?;
         return parse_release(&text);
     }
     let api = fetch_from_api();
@@ -103,7 +110,12 @@ pub fn fetch_latest() -> Result<Release, String> {
         Ok(rel) => Ok(rel),
         Err(page_err) => {
             let api_err = api.unwrap_err();
-            Err(format!("{api_err}（发布页也读取失败：{page_err}）"))
+            Err(tr2(
+                "{}（发布页也读取失败：{}）",
+                "{} (the releases page failed too: {})",
+                api_err,
+                page_err,
+            ))
         }
     }
 }
@@ -113,9 +125,17 @@ fn fetch_from_api() -> Result<Release, String> {
     let response = http_get(API_URL)?;
     match response.status {
         200 => parse_release(&response.body),
-        403 | 429 => Err("GitHub 接口访问受限（可能被限流）".to_owned()),
-        404 => Err("GitHub 接口没有找到发布记录".to_owned()),
-        code => Err(format!("GitHub 接口返回 HTTP {code}")),
+        403 | 429 => Err(tr(
+            "GitHub 接口访问受限（可能被限流）",
+            "GitHub rate-limited the request",
+        )
+        .to_owned()),
+        404 => Err(tr("GitHub 接口没有找到发布记录", "no releases found").to_owned()),
+        code => Err(tr1(
+            "GitHub 接口返回 HTTP {}",
+            "the GitHub API returned HTTP {}",
+            code,
+        )),
     }
 }
 
@@ -123,11 +143,21 @@ fn fetch_from_api() -> Result<Release, String> {
 fn fetch_from_page() -> Result<Release, String> {
     let response = http_get(RELEASES_URL)?;
     if response.status != 200 {
-        return Err(format!("发布页返回 HTTP {}", response.status));
+        return Err(tr1(
+            "发布页返回 HTTP {}",
+            "the releases page returned HTTP {}",
+            response.status,
+        ));
     }
-    let tag =
-        tag_from_release_url(&response.url).ok_or_else(|| "发布页地址里没有版本号".to_owned())?;
-    let version = normalize_version(&tag).ok_or_else(|| format!("无法解析版本号 {tag}"))?;
+    let tag = tag_from_release_url(&response.url).ok_or_else(|| {
+        tr(
+            "发布页地址里没有版本号",
+            "no version in the releases page URL",
+        )
+        .to_owned()
+    })?;
+    let version = normalize_version(&tag)
+        .ok_or_else(|| tr1("无法解析版本号 {}", "cannot parse version {}", &tag))?;
     Ok(Release {
         version,
         tag,
@@ -208,11 +238,18 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
             .find(|(k, _)| k == key)
             .map(|(_, v)| v.clone())
     };
-    let tag = get("tag_name").ok_or("GitHub 返回的数据缺少 tag_name")?;
-    let version = normalize_version(&tag).ok_or_else(|| format!("无法解析版本号 {tag}"))?;
+    let tag = get("tag_name").ok_or_else(|| {
+        tr(
+            "GitHub 返回的数据缺少 tag_name",
+            "the payload has no tag_name",
+        )
+    })?;
+    let version = normalize_version(&tag)
+        .ok_or_else(|| tr1("无法解析版本号 {}", "cannot parse version {}", &tag))?;
     let mut notes = get("body").unwrap_or_default().replace("\r\n", "\n");
     if notes.chars().count() > 4000 {
-        notes = notes.chars().take(4000).collect::<String>() + "\n…（内容过长，已截断）";
+        notes = notes.chars().take(4000).collect::<String>()
+            + tr("\n…（内容过长，已截断）", "\n… (truncated)");
     }
     Ok(Release {
         version,
@@ -287,13 +324,13 @@ fn http_get(url: &str) -> Result<HttpResponse, String> {
                 0,
             )
         },
-        "无法初始化网络会话",
+        tr("无法初始化网络会话", "cannot open a network session"),
     )?;
     let _ = unsafe { WinHttpSetTimeouts(session.0, 5000, 8000, 8000, 12000) };
 
     let conn = Handle::new(
         unsafe { WinHttpConnect(session.0, PCWSTR(host_w.as_ptr()), 443, 0) },
-        "无法连接 GitHub",
+        tr("无法连接 GitHub", "cannot reach GitHub"),
     )?;
 
     let request = Handle::new(
@@ -308,13 +345,16 @@ fn http_get(url: &str) -> Result<HttpResponse, String> {
                 WINHTTP_FLAG_SECURE,
             )
         },
-        "无法创建更新请求",
+        tr("无法创建更新请求", "cannot create the update request"),
     )?;
 
-    unsafe { WinHttpSendRequest(request.0, Some(&headers), None, 0, 0, 0) }
-        .map_err(net_err("更新请求发送失败"))?;
-    unsafe { WinHttpReceiveResponse(request.0, std::ptr::null_mut()) }
-        .map_err(net_err("读取更新响应失败"))?;
+    unsafe { WinHttpSendRequest(request.0, Some(&headers), None, 0, 0, 0) }.map_err(net_err(
+        tr("更新请求发送失败", "sending the update request failed"),
+    ))?;
+    unsafe { WinHttpReceiveResponse(request.0, std::ptr::null_mut()) }.map_err(net_err(tr(
+        "读取更新响应失败",
+        "reading the update response failed",
+    )))?;
 
     let status = status_code(request.0);
     let url = if status == 200 {
@@ -333,10 +373,10 @@ fn http_get(url: &str) -> Result<HttpResponse, String> {
 fn split_https(url: &str) -> Result<(String, String), String> {
     let rest = url
         .strip_prefix("https://")
-        .ok_or_else(|| "只支持 https 地址".to_owned())?;
+        .ok_or_else(|| tr("只支持 https 地址", "only https URLs are supported").to_owned())?;
     let (host, tail) = rest.split_once('/').unwrap_or((rest, ""));
     if host.is_empty() {
-        return Err("更新地址缺少主机名".to_owned());
+        return Err(tr("更新地址缺少主机名", "the update URL has no host").to_owned());
     }
     let path = if tail.is_empty() {
         "/".to_owned()
@@ -399,8 +439,10 @@ fn read_body(request: *mut c_void) -> Result<String, String> {
     let mut body: Vec<u8> = Vec::new();
     loop {
         let mut available = 0u32;
-        unsafe { WinHttpQueryDataAvailable(request, &mut available) }
-            .map_err(net_err("读取更新响应失败"))?;
+        unsafe { WinHttpQueryDataAvailable(request, &mut available) }.map_err(net_err(tr(
+            "读取更新响应失败",
+            "reading the update response failed",
+        )))?;
         if available == 0 {
             break;
         }
@@ -415,16 +457,25 @@ fn read_body(request: *mut c_void) -> Result<String, String> {
                 &mut read,
             )
         }
-        .map_err(net_err("读取更新响应失败"))?;
+        .map_err(net_err(tr(
+            "读取更新响应失败",
+            "reading the update response failed",
+        )))?;
         if read == 0 {
             break;
         }
         body.extend_from_slice(&buf[..read as usize]);
         if body.len() > 1024 * 1024 {
-            return Err("GitHub 返回的内容过大".to_owned());
+            return Err(tr("GitHub 返回的内容过大", "the GitHub response is too large").to_owned());
         }
     }
-    String::from_utf8(body).map_err(|_| "GitHub 返回的内容不是 UTF-8".to_owned())
+    String::from_utf8(body).map_err(|_| {
+        tr(
+            "GitHub 返回的内容不是 UTF-8",
+            "the GitHub response is not UTF-8",
+        )
+        .to_owned()
+    })
 }
 
 // ---------------------------------------------------------------------- json

@@ -5,10 +5,12 @@
 
 > RustShot is a tiny screenshot & annotation tool for Windows. No runtime, no telemetry — one 7 MB exe for a USB stick, or a Setup.exe that installs machine-wide.
 
+**简体中文** · [English](README.en.md)
+
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/i314q159/rust_shot)
 [![Rust](https://img.shields.io/badge/rust-edition%202024-CE412B?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE-MIT.md)
-[![Size](https://img.shields.io/badge/exe-7.4%20MB-lightgrey?style=flat-square)](#下载)
+[![Size](https://img.shields.io/badge/exe-7.5%20MB-lightgrey?style=flat-square)](#下载)
 [![Runtime](https://img.shields.io/badge/runtime-none-success?style=flat-square)](#下载)
 [![Offline](https://img.shields.io/badge/network-not%20required-success?style=flat-square)](#已知限制)
 
@@ -69,11 +71,13 @@
 
 **主题** — 顶部 `主题` 菜单切换 `跟随系统 / 浅色 / 深色`，默认跟随 Windows 的浅色/深色设置：改系统设置时面板和截图工具栏一起变色，不用重启。手动选定的主题会写进 `config.txt`，固定使用、不再跟随系统。
 
+**语言** — 界面中英双语，默认跟随 Windows 的显示语言（中文系统装中文，其它装英文）。顶部 `语言` 菜单可切 `跟随系统 / 中文 / English`，选定后写进 `config.txt`；切换即时生效，窗口标题、托盘菜单、截图工具栏、安装包界面一起换。
+
 **为什么不用 Snipaste / 系统截图**
 
 | | RustShot | 系统截图 | Snipaste |
 | --- | --- | --- | --- |
-| 体积 | 单文件 7.4 MB | 内置 | 安装包 + 依赖 |
+| 体积 | 单文件 7.5 MB | 内置 | 安装包 + 依赖 |
 | 标注 | 6 种 + 序号 + 马赛克 | 基础画笔 | 齐全（含贴图、取色） |
 | 便携配置 | `config.txt` 跟 exe 走 | — | 部分可配 |
 | 贴图 / OCR / 滚动长截图 | 不做 | 不做 | 贴图有，OCR 无 |
@@ -192,13 +196,14 @@ rust_shot.exe --help, -h      用法说明
 
 ## 配置
 
-设置写在**程序同目录的 `config.txt`**，三行键值对，用记事本就能改：
+设置写在**程序同目录的 `config.txt`**，四行键值对，用记事本就能改：
 
 ```ini
 # RustShot 配置（保存后重启生效；save_dir 支持 %USERPROFILE% 这类环境变量）
 save_dir=%USERPROFILE%\Pictures\RustShot
 auto_save=true
 theme=system
+lang=system
 ```
 
 | 键 | 说明 |
@@ -206,6 +211,7 @@ theme=system
 | `save_dir` | 保存目录，支持 `%USERPROFILE%`、`%TEMP%` 等环境变量 |
 | `auto_save` | 复制到剪贴板时是否同时存 PNG（`true` / `false`） |
 | `theme` | 界面主题：`system` 跟随 Windows / `light` 浅色 / `dark` 深色，和顶部「主题」菜单是同一个开关 |
+| `lang` | 界面语言：`system` 跟随 Windows / `zh` 中文 / `en` English，和顶部「语言」菜单是同一个开关 |
 
 面板上的 `更改` / `重置` 与顶部「主题」菜单会立刻写回配置文件；旧版本存放在 `%LOCALAPPDATA%\RustShot\config.txt` 的设置，首次启动时自动迁移。
 
@@ -231,7 +237,7 @@ pwsh -File installer\build.ps1           # cargo build --release + 复制 exe + 
 # 安装日志：outputs\install-<版本>.log
 ```
 
-安装脚本是 `installer\rust_shot.iss`（Inno Setup 6），版本号从 `Cargo.toml` 读取，不手写第二份。安装包固定装到 `C:\Program Files\RustShot`，界面为中文四页：欢迎 → 附加设置 → 安装 → 完成。
+安装脚本是 `installer\rust_shot.iss`（Inno Setup 6），版本号从 `Cargo.toml` 读取，不手写第二份。安装包固定装到 `C:\Program Files\RustShot`，界面四页：欢迎 → 附加设置 → 安装 → 完成。安装包自带 English / 简体中文，启动时弹语言选择并按系统语言预选（`installer\lang\*.isl` 放两套文案，`/LANG=english` 可跳过选择）。
 
 `build.ps1` 默认在打包完成后立刻安装这次编出来的 `RustShot-Setup-<版本>.exe`（静默、不重启；非管理员会话弹一次 UAC）。若 RustShot 正在运行，脚本先尝试正常关闭，必要时强制结束，避免被安装包的占用检测拦住；装完再读卸载注册表里的版本号校验。
 
@@ -255,7 +261,7 @@ RustShot-Setup-0.1.1.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 ```powershell
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
-cargo test          # 42 项：箭头几何、序号对比色、选区夹取、控制点命中、配置读写/环境变量、六种标注导出绘制
+cargo test          # 45 项：箭头几何、序号对比色、选区夹取、控制点命中、配置读写/环境变量、六种标注导出绘制
 ```
 
 ## 实现要点
@@ -271,6 +277,7 @@ cargo test          # 42 项：箭头几何、序号对比色、选区夹取、�
 | 热键 / 托盘 / 单实例 | 独立线程跑隐藏消息窗口：`RegisterHotKey`、互斥体单实例、托盘菜单事件入队后唤醒 UI |
 | 检查更新 | WinHTTP（系统自带，不加 TLS 依赖）后台线程请求 release，`/releases/latest` 的跳转地址兜底；返回的 JSON 用约 100 行扫描器取字段，不引入 serde |
 | 主题 | 读 `HKCU\…\Themes\Personalize\AppsUseLightTheme` 判断系统深浅色；隐藏的顶层窗口接 `WM_SETTINGCHANGE` 唤醒界面，浅/深两套 palette 一起注册，面板与截图工具栏共用一个颜色来源 |
+| 语言 | 文案在调用处写成 `tr("中文", "English")`，`src/i18n.rs` 只负责当前语言、Windows UI 语言探测与 `{}` 占位替换；切换语言时同步改窗口标题与托盘菜单文字 |
 | 字体 | 不打包字体：按固定顺序查找系统字体（微软雅黑 → 黑体 → 宋体 → Segoe UI），界面与导出共用同一套字形 |
 | 主面板 | eframe/egui；`logic()` 负责事件（窗口隐藏时也执行），`ui()` 负责绘制与覆盖层视口 |
 | 图标 | `assets/icon/` 下多尺寸 PNG/ICO，窗口与托盘内嵌 PNG，`build.rs` 把 ICO 写进 exe 资源 |
@@ -287,6 +294,7 @@ rust_shot/
 │  ├─ capture.rs   GDI 截屏、显示器 / 窗口几何
 │  ├─ worker.rs    热键线程、单实例 IPC
 │  ├─ update.rs    GitHub 发布页更新检查（WinHTTP + 极简 JSON 扫描）
+│  ├─ i18n.rs      中英双语：语言选择、系统语言探测、文案替换
 │  ├─ config.rs    便携配置读写、同名文件避让
 │  ├─ fonts.rs     系统中文字体加载（egui + fontdue 共用）
 │  ├─ win.rs       窗口定位（物理像素）
@@ -301,7 +309,8 @@ rust_shot/
 ├─ build.rs        把 ICO 写入 exe 资源
 ├─ v.txt           最近一次构建的版本号（由 build.ps1 写入，来源是 Cargo.toml）
 ├─ LICENSE-MIT.md
-└─ README.md
+├─ README.md       （简体中文）
+└─ README.en.md    （English）
 ```
 
 ## 已知限制 / FAQ

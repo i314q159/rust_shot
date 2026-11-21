@@ -17,6 +17,8 @@ pub struct Config {
     pub auto_save: bool,
     /// Top bar theme choice: system / light / dark.
     pub theme: crate::theme::Preference,
+    /// UI language: system / zh / en.
+    pub lang: crate::i18n::Preference,
 }
 
 impl Default for Config {
@@ -25,6 +27,7 @@ impl Default for Config {
             save_dir: crate::util::default_save_dir(),
             auto_save: true,
             theme: crate::theme::Preference::System,
+            lang: crate::i18n::Preference::System,
         }
     }
 }
@@ -110,6 +113,7 @@ impl Config {
                 "save_dir" if !value.is_empty() => cfg.save_dir = expand_env(value),
                 "auto_save" => cfg.auto_save = value != "false",
                 "theme" => cfg.theme = crate::theme::Preference::parse(value),
+                "lang" => cfg.lang = crate::i18n::Preference::parse(value),
                 _ => {}
             }
         }
@@ -128,11 +132,17 @@ impl Config {
         } else {
             self.save_dir.display().to_string()
         };
-        let body = format!(
+        let header = crate::i18n::tr(
             "# RustShot 配置（保存后重启生效；save_dir 支持 %USERPROFILE% 这类环境变量）\n\
-             save_dir={dir}\nauto_save={}\ntheme={}\n",
+             # theme: system | light | dark   lang: system | zh | en\n",
+            "# RustShot config (restart to apply; save_dir accepts %USERPROFILE% variables)\n\
+             # theme: system | light | dark   lang: system | zh | en\n",
+        );
+        let body = format!(
+            "{header}save_dir={dir}\nauto_save={}\ntheme={}\nlang={}\n",
             self.auto_save,
-            self.theme.key()
+            self.theme.key(),
+            self.lang.key()
         );
         let primary = path();
         if let Some(p) = &primary

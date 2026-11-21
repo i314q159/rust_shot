@@ -117,9 +117,9 @@ impl Preference {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::System => "跟随系统",
-            Self::Light => "浅色",
-            Self::Dark => "深色",
+            Self::System => crate::i18n::tr("跟随系统", "Follow system"),
+            Self::Light => crate::i18n::tr("浅色", "Light"),
+            Self::Dark => crate::i18n::tr("深色", "Dark"),
         }
     }
 }

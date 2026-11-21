@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::capture::{Frame, PhysRect};
+use crate::i18n::tr;
 use crate::shapes::{self, Col, Px, Shape};
 
 /// Each capture gets its own window title so `FindWindowW` can never pick up
@@ -37,13 +38,13 @@ pub enum Tool {
 impl Tool {
     pub fn label(self) -> &'static str {
         match self {
-            Tool::Select => "选择",
-            Tool::Rect => "矩形",
-            Tool::Arrow => "箭头",
-            Tool::Pen => "画笔",
-            Tool::Text => "文字",
-            Tool::Mosaic => "马赛克",
-            Tool::Number => "序号",
+            Tool::Select => tr("选择", "Select"),
+            Tool::Rect => tr("矩形", "Rect"),
+            Tool::Arrow => tr("箭头", "Arrow"),
+            Tool::Pen => tr("画笔", "Pen"),
+            Tool::Text => tr("文字", "Text"),
+            Tool::Mosaic => tr("马赛克", "Mosaic"),
+            Tool::Number => tr("序号", "Number"),
         }
     }
     pub fn icon(self) -> &'static str {
@@ -389,7 +390,10 @@ impl Session {
             painter.text(
                 egui::pos2(screen.center().x, screen.top() + 42.0),
                 egui::Align2::CENTER_TOP,
-                "拖动鼠标框选区域 · 单击选中窗口 · 右键或 ESC 取消",
+                tr(
+                    "拖动鼠标框选区域 · 单击选中窗口 · 右键或 ESC 取消",
+                    "Drag a region · click a window · right-click or ESC to cancel",
+                ),
                 egui::FontId::proportional(15.0),
                 egui::Color32::from_white_alpha(210),
             );
@@ -966,11 +970,11 @@ impl Session {
                             ui.separator();
                             for w in WIDTHS {
                                 let label = if w < 3.0 {
-                                    "细"
+                                    tr("细", "S")
                                 } else if w < 6.0 {
-                                    "中"
+                                    tr("中", "M")
                                 } else {
-                                    "粗"
+                                    tr("粗", "L")
                                 };
                                 if ui
                                     .selectable_label((self.width - w).abs() < 0.01, label)
@@ -1007,16 +1011,16 @@ impl Session {
                                 }
                             }
                             ui.separator();
-                            if ui.button("撤销").clicked() {
+                            if ui.button(tr("撤销", "Undo")).clicked() {
                                 undo = true;
                             }
-                            if ui.button("复制").clicked() {
+                            if ui.button(tr("复制", "Copy")).clicked() {
                                 export = Some(Export::Copy);
                             }
-                            if ui.button("保存").clicked() {
+                            if ui.button(tr("保存", "Save")).clicked() {
                                 export = Some(Export::Save);
                             }
-                            if ui.button("取消").clicked() {
+                            if ui.button(tr("取消", "Cancel")).clicked() {
                                 cancel = true;
                             }
                         });

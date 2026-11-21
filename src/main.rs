@@ -5,6 +5,7 @@ mod app;
 mod capture;
 mod config;
 mod fonts;
+mod i18n;
 mod overlay;
 mod shapes;
 mod theme;
@@ -18,6 +19,8 @@ use capture::PhysRect;
 fn main() {
     util::install_panic_logger();
     capture::set_dpi_aware();
+    // The help box and the window title need the language before the app exists.
+    i18n::set(i18n::resolve(config::Config::load().lang));
     util::log(&format!(
         "start args={:?}",
         std::env::args().skip(1).collect::<Vec<_>>()
@@ -70,7 +73,7 @@ fn main() {
     let icon = app::app_icon(64);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title(app::PANEL_TITLE)
+            .with_title(app::panel_title())
             .with_inner_size([470.0, 460.0])
             .with_min_inner_size([440.0, 420.0])
             .with_icon(std::sync::Arc::new(icon)),
@@ -110,16 +113,23 @@ fn resolve_launch(
 fn show_help() {
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK, MessageBoxW};
     use windows::core::PCWSTR;
-    let text = util::wide(
-        "RustShot\n\n\
+    const ZH: &str = "RustShot\n\n\
          无参数            启动后常驻托盘（不弹主面板；已在运行则静默退出）\n\
          --panel, --show   启动并显示主面板\n\
          --capture, -c     立即区域截图\n\
          --full, -f        立即全屏截图到剪贴板\n\
          --tray, --silent  同“无参数”，开机自启用\n\
          --selftest <png>  离屏渲染一张测试图并退出\n\n\
-         全局热键：F1 区域截图 · F2 全屏 · Ctrl+Alt+Q 退出",
-    );
+         全局热键：F1 区域截图 · F2 全屏 · Ctrl+Alt+Q 退出";
+    const EN: &str = "RustShot\n\n\
+         (no args)         start in the tray (already running: exit quietly)\n\
+         --panel, --show   start with the main panel\n\
+         --capture, -c     region capture right away\n\
+         --full, -f        full screen to the clipboard (no overlay)\n\
+         --tray, --silent  same as no arguments (used by autostart)\n\
+         --selftest <png>  render a test image and exit\n\n\
+         Hotkeys: F1 region - F2 full screen - Ctrl+Alt+Q quit";
+    let text = util::wide(i18n::tr(ZH, EN));
     let title = util::wide("RustShot");
     unsafe {
         MessageBoxW(
