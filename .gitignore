@@ -2,3 +2,4 @@
 /outputs
 # 聊天里上传的图片缓存（不是源码）
 .qoder-input-images/
+docs/
