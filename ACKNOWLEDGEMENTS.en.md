@@ -1,6 +1,6 @@
 # Acknowledgements
 
-RustShot is a 7 MB, dependency-free single exe not because everything was written from scratch, but because it stands on other people's work. These are the ones that matter.
+RustShot is a small, dependency-free single exe not because everything was written from scratch, but because it stands on other people's work. These are the ones that matter.
 
 [简体中文](ACKNOWLEDGEMENTS.md) · **English**
 
@@ -38,7 +38,11 @@ Thanks to [Visual Studio Code](https://code.visualstudio.com/) as the main edito
 
 ## CodeBuddy
 
-Thanks to [CodeBuddy](https://www.codebuddy.cn/) (Tencent's AI coding assistant), which offers completion, multi-file edits and repo-level Q&A as an editor extension, plus a standalone IDE and CLI. While building RustShot, completion and "change these files together" got the most use; when the borrow checker complains, having it explain the error first is usually faster than staring at lifetimes alone.
+Thanks to [CodeBuddy](https://www.codebuddy.cn/) (Tencent's AI coding assistant), which offers completion, multi-file edits, repo-level Q&A and code review as an editor extension, plus a standalone IDE and CLI. While building RustShot it did two things worth more than completion. **Code review**: after a feature lands, it reads the diff and points out the branch that was missed, the Chinese and English strings that drifted apart, and the edge case that only fires in one particular state. **Feature breakdown**: it splits something like "silent update" into steps that compile and can be verified on their own — network layer and checksum first, then the UI switch, then install and restart — so each step is a commit you can roll back instead of two hundred changed lines followed by debugging. And when the borrow checker complains, having it explain the error first is still faster than staring at lifetimes alone.
+
+## WorkBuddy
+
+Thanks to [WorkBuddy](https://www.codebuddy.cn/work/), Tencent's desktop AI agent workbench. It reads and writes files and drives applications on the machine itself, taking over the chores that have nothing to do with writing code but cannot be skipped: sorting screenshot assets, archiving build outputs, drafting release notes from a template, batch-renaming a pile of files. For a single-maintainer open-source project the bottleneck is rarely the code — it is all of that.
 
 ## QwenWork
 

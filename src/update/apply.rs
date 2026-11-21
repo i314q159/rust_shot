@@ -2,12 +2,13 @@
 //!
 //! The app downloads and verifies the new build, spawns
 //! `rust_shot.exe --apply-update <pid> <file>` and quits. The helper waits for
-//! that pid to disappear, then either runs the setup silently (installed copy)
-//! or swaps the exe (portable copy) and starts the app again.
+//! that pid to disappear, runs the setup silently and starts the app again.
+//! Auto-update is installed-copy only; portable builds are updated by hand.
 //!
 //! It never shows a window of its own; the only prompt is the UAC consent
 //! Windows puts in front of the installer.
 
+use crate::config::i18n::strings;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -19,7 +20,7 @@ use windows::Win32::UI::Shell::{SEE_MASK_FLAG_NO_UI, SEE_MASK_NOCLOSEPROCESS, SH
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 use windows::core::PCWSTR;
 
-use crate::i18n::tr1;
+use crate::config::i18n::tr1;
 
 /// Entry point of `--apply-update`. Never returns.
 ///
@@ -27,7 +28,7 @@ use crate::i18n::tr1;
 /// so the installed `rust_shot.exe` is not "in use" while the setup runs).
 pub fn run(parent_pid: u32, source: &Path, app: &Path) -> ! {
     let exe = app.to_path_buf();
-    crate::util::log(&format!(
+    crate::platform::util::log(&format!(
         "apply update: parent={parent_pid} source={} app={} installed={}",
         source.display(),
         exe.display(),
@@ -39,36 +40,35 @@ pub fn run(parent_pid: u32, source: &Path, app: &Path) -> ! {
     // The installer's AppMutex check aborts silently while any copy still holds
     // the single-instance mutex, so wait for the name to disappear first.
     let started = Instant::now();
-    while crate::worker::mutex_exists() && started.elapsed() < Duration::from_secs(15) {
+    while crate::app::worker::mutex_exists() && started.elapsed() < Duration::from_secs(15) {
         std::thread::sleep(Duration::from_millis(120));
     }
-    crate::util::log(&format!(
+    crate::platform::util::log(&format!(
         "apply update: single-instance mutex still held={}",
-        crate::worker::mutex_exists()
+        crate::app::worker::mutex_exists()
     ));
 
     // Windows can still list the old process in the Restart Manager for a
     // moment after it leaves the message loop; the installer would then abort.
     std::thread::sleep(Duration::from_millis(900));
 
+    // Auto-update is for the installed copy only (the portable exe is updated
+    // by downloading a fresh portable zip), so anything else just restarts.
     let installed = crate::update::installed_copy_at(&exe);
-    let ok = if installed {
-        run_setup(source) || {
+    let ok = installed
+        && (run_setup(source) || {
             // One retry, in case the first attempt raced the teardown.
             std::thread::sleep(Duration::from_secs(3));
             run_setup(source)
-        }
-    } else {
-        swap_exe(source, &exe)
-    };
-    crate::util::log(&format!(
+        });
+    crate::platform::util::log(&format!(
         "apply update finished ok={ok} installed={installed}"
     ));
 
     // Whether it worked or not, bring the app back: on failure the old build is
     // still in place, so the user keeps a working tool instead of nothing.
     if let Err(e) = std::process::Command::new(&exe).arg("--panel").spawn() {
-        crate::util::log(&format!("apply update: cannot restart the app: {e}"));
+        crate::platform::util::log(&format!("apply update: cannot restart the app: {e}"));
     }
     std::process::exit(if ok { 0 } else { 1 });
 }
@@ -89,18 +89,18 @@ fn wait_for(pid: u32, timeout: Duration) {
 
 /// `RustShot-Setup-<ver>.exe /VERYSILENT …` elevated, then wait for it.
 fn run_setup(setup: &Path) -> bool {
-    let verb = crate::util::wide("runas");
-    let file = crate::util::wide(&setup.display().to_string());
+    let verb = crate::platform::util::wide("runas");
+    let file = crate::platform::util::wide(&setup.display().to_string());
     // The installer keeps its own log so a failed silent run can be diagnosed
     // from rustshot.log / install.log.
     let log_path = crate::update::update_dir().join("install.log");
-    let params = crate::util::wide(&format!(
+    let params = crate::platform::util::wide(&format!(
         "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCLOSEAPPLICATIONS /LOG=\"{}\"",
         log_path.display()
     ));
     let dir = setup
         .parent()
-        .map(|p| crate::util::wide(&p.display().to_string()));
+        .map(|p| crate::platform::util::wide(&p.display().to_string()));
 
     let mut info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
@@ -119,7 +119,9 @@ fn run_setup(setup: &Path) -> bool {
     if unsafe { windows::Win32::UI::Shell::ShellExecuteExW(&mut info) }.is_err() {
         // A cancelled UAC prompt lands here (ERROR_CANCELLED): nothing was
         // installed, the current build is untouched.
-        crate::util::log("apply update: ShellExecuteEx failed (user cancelled or blocked)");
+        crate::platform::util::log(
+            "apply update: ShellExecuteEx failed (user cancelled or blocked)",
+        );
         return false;
     }
     if info.hProcess.is_invalid() {
@@ -131,58 +133,21 @@ fn run_setup(setup: &Path) -> bool {
     let _ = unsafe { WaitForSingleObject(process.0, 10 * 60 * 1000) };
     let mut code = 0u32;
     let _ = unsafe { GetExitCodeProcess(process.0, &mut code) };
-    crate::util::log(&format!("apply update: setup exit code {code}"));
+    crate::platform::util::log(&format!("apply update: setup exit code {code}"));
     code == 0
-}
-
-/// Portable copy: move the running exe aside, drop the new one in, start it.
-fn swap_exe(new: &Path, exe: &Path) -> bool {
-    let old = exe.with_extension("exe.old");
-    let _ = std::fs::remove_file(&old);
-    if std::fs::rename(exe, &old).is_err() {
-        return false;
-    }
-    match std::fs::copy(new, exe) {
-        Ok(_) => {
-            let _ = std::fs::remove_file(new);
-            true
-        }
-        Err(e) => {
-            crate::util::log(&format!("apply update: cannot write the new exe: {e}"));
-            // Put the old build back so the next start still works.
-            let _ = std::fs::rename(&old, exe);
-            false
-        }
-    }
 }
 
 /// Kick off the helper for `source` and return immediately.
 pub fn spawn_helper(source: &Path) -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| {
-        tr1(
-            "无法定位当前程序：{}",
-            "cannot locate the running program: {}",
-            e,
-        )
-    })?;
+    let exe =
+        std::env::current_exe().map_err(|e| tr1(strings::CANNOT_LOCATE_THE_RUNNING_PROGRAM, e))?;
     std::process::Command::new(exe)
         .arg("--apply-update")
         .arg(std::process::id().to_string())
         .arg(source)
         .spawn()
         .map(|_| ())
-        .map_err(|e| tr1("无法启动更新程序：{}", "cannot start the updater: {}", e))
-}
-
-/// Remove a leftover `rust_shot.exe.old` from a previous portable swap.
-pub fn cleanup_old_exe() {
-    let Ok(exe) = std::env::current_exe() else {
-        return;
-    };
-    let old = exe.with_extension("exe.old");
-    if old.exists() {
-        let _ = std::fs::remove_file(&old);
-    }
+        .map_err(|e| tr1(strings::CANNOT_START_THE_UPDATER, e))
 }
 
 /// Small RAII wrapper so every early return closes the process handle.

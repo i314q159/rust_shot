@@ -1,6 +1,6 @@
 # RustShot
 
-**A 7 MB screenshot & annotation tool for Windows: press `F1`, drag a region, add a few marks, hit Enter to copy.**
+**A tiny screenshot & annotation tool for Windows: press `F1`, drag a region, add a few marks, hit Enter to copy.**
 One portable exe, or a Setup.exe that installs machine-wide into `C:\Program Files`; no runtime, and the config travels with the exe.
 
 **English** · [简体中文](README.md)
@@ -9,7 +9,7 @@ One portable exe, or a Setup.exe that installs machine-wide into `C:\Program Fil
 [![Release](https://img.shields.io/github/v/release/i314q159/rust_shot?style=flat-square&color=2F81F7)](https://github.com/i314q159/rust_shot/releases)
 [![Rust](https://img.shields.io/badge/rust-edition%202024-CE412B?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE-MIT.md)
-[![Size](https://img.shields.io/badge/exe-7.5%20MB-lightgrey?style=flat-square)](#download)
+[![Size](https://img.shields.io/badge/exe-tiny-lightgrey?style=flat-square)](#download)
 [![Runtime](https://img.shields.io/badge/runtime-none-success?style=flat-square)](#download)
 [![Offline](https://img.shields.io/badge/network-not%20required-success?style=flat-square)](#limitations--faq)
 
@@ -72,19 +72,21 @@ One portable exe, or a Setup.exe that installs machine-wide into `C:\Program Fil
 
 **Stays out of the way** — launching it (double click, Start Menu, autostart) is a tray app: the window is moved off screen before the first frame, so nothing flashes, and F1 / F2 work right away. Open the panel with `--panel` or the tray menu. The × button also hides to the tray (parked off screen and removed from the taskbar, so it never shows up in Alt+Tab). Left click on the tray icon starts a capture, right click switches region / full screen / panel / quit; single instance, so launching again never opens a second copy.
 
-**Update check** — `Help → Check for updates` reads the GitHub release page and compares it with the running version: when there is something newer it lists the release notes and opens the release page in one click, otherwise it just says you are current. A `Update vX.Y.Z` badge appears in the top right corner. It only goes online when you click it; if `api.github.com` is unreachable it falls back to the redirect of the releases page.
+**Update check / silent update** — `Help → Check for updates` reads the GitHub release page and compares it with the running version. When something is newer, `Update now` downloads the installer in the background, verifies it against the release's `SHA256SUMS.txt`, then installs silently and restarts the app — one UAC prompt in total. A cancelled UAC or a checksum mismatch leaves the current install untouched. `Open releases page` is still there for a manual download, and an `Update vX.Y.Z` badge appears in the top right corner. Tick "Install new versions silently" (`auto_update = 'silent'` in `config.toml`) and a check that finds a newer build starts that flow right away. It only goes online when you click it; if `api.github.com` is unreachable it falls back to the redirect of the releases page.
 
-**Theme** — the top bar `Theme` menu switches `Follow system / Light / Dark`. By default it follows the Windows light/dark setting: changing the system theme recolours the panel and the capture toolbar without a restart. A pinned theme is written to `config.txt` and stops following the system.
+**Update proxy** — `Help → Proxy` picks `system proxy / direct / manual address` (`proxy = 'system' | 'direct' | '127.0.0.1:12334'` in `config.toml`; a bare port works too). It only affects the update check and download, and applies to the next check — handy when the system proxy is off but a local proxy is running.
 
-**Language** — the UI is bilingual (Chinese / English) and follows the Windows display language by default. The top bar `Language` menu switches `Follow system / 中文 / English`, the choice is written to `config.txt`, and it applies immediately to the window title, tray menu, capture toolbar and installer UI.
+**Theme** — the top bar `Theme` menu switches `Follow system / Light / Dark`. By default it follows the Windows light/dark setting: changing the system theme recolours the panel and the capture toolbar without a restart. A pinned theme is written to `config.toml` and stops following the system.
+
+**Language** — the UI is bilingual (Chinese / English) and follows the Windows display language by default. The top bar `Language` menu switches `Follow system / 中文 / English`, the choice is written to `config.toml`, and it applies immediately to the window title, tray menu, capture toolbar and installer UI.
 
 **Why not Snipaste / Snipping Tool**
 
 | | RustShot | Snipping Tool | Snipaste |
 | --- | --- | --- | --- |
-| Size | one 7.5 MB exe | built in | installer + deps |
+| Size | one small exe, no runtime | built in | installer + deps |
 | Annotation | 6 tools + numbers + mosaic | basic pen | complete (pin, picker) |
-| Portable config | `config.txt` travels with the exe | — | partly configurable |
+| Portable config | `config.toml` travels with the exe | — | partly configurable |
 | Pin / OCR / scrolling capture | not supported | not supported | pin yes, OCR no |
 
 The trade-off is deliberate: do the one path — freeze → select → annotate → deliver — with no extra steps.
@@ -182,9 +184,9 @@ The installer only writes to `C:\Program Files\RustShot`, never to a user folder
 
 Download `rust_shot.exe` and run it:
 
-1. The first start creates `config.txt` **next to the exe**;
+1. The first start creates `config.toml` **next to the exe**;
 2. In a read-only folder such as `Program Files` it falls back to `%LOCALAPPDATA%\RustShot\`;
-3. To change the save folder use `Change` in the panel, or edit `config.txt`.
+3. To change the save folder use `Change` in the panel, or edit `config.toml`.
 
 Idle footprint is about 65 MB private (≈100 MB working set); there is no background service and no network activity.
 
@@ -202,15 +204,22 @@ rust_shot.exe --help, -h       usage
 
 ## Configuration
 
-Settings live in **`config.txt` next to the exe** — four `key=value` lines, editable in Notepad:
+Settings live in **`config.toml` next to the exe** — plain TOML, editable in Notepad:
 
-```ini
+```toml
 # RustShot config (restart to apply; save_dir accepts %USERPROFILE% variables)
-save_dir=%USERPROFILE%\Pictures\RustShot
-auto_save=true
-theme=system
-lang=system
+# theme: system | light | dark   lang: system | zh | en
+# auto_update: notice | silent   proxy: empty follows Windows | direct | 7890 | host:port
+
+save_dir = '%USERPROFILE%\Pictures\RustShot'
+auto_save = true
+theme = 'system'
+lang = 'system'
+auto_update = 'notice'
+proxy = 'system'
 ```
+
+Paths are written as single-quoted TOML literal strings, so `C:\Users\…` needs no double backslashes; a value containing a single quote is re-emitted as a double-quoted string automatically.
 
 | Key | Meaning |
 | --- | --- |
@@ -218,8 +227,10 @@ lang=system
 | `auto_save` | also write a PNG when copying to the clipboard (`true` / `false`) |
 | `theme` | `system` follows Windows, `light`, `dark` — the same switch as the top bar `Theme` menu |
 | `lang` | `system` follows Windows, `zh`, `en` — the same switch as the top bar `Language` menu |
+| `auto_update` | `notice` only reports in the dialog (default) / `silent` installs a newer release as soon as a check finds one; same switch as the checkbox in the update dialog |
+| `proxy` | proxy for the update check/download: `system` follows Windows (default), `direct`, `7890` (implies `127.0.0.1`), `host:port`; same switch as `Help → Proxy` |
 
-`Change` / `Reset` in the panel and the `Theme` / `Language` menus write the file immediately. Settings kept by older builds in `%LOCALAPPDATA%\RustShot\config.txt` are migrated on first start.
+`Change` / `Reset` in the panel and the `Theme` / `Language` menus write the file immediately. The `config.txt` used by older builds (next to the exe or in `%LOCALAPPDATA%\RustShot`) is imported on first start and rewritten as `config.toml`; the old file is kept as `config.txt.bak`.
 
 Diagnostics: `%LOCALAPPDATA%\RustShot\rustshot.log` (startup, errors and panics only).
 
@@ -329,7 +340,10 @@ rust_shot/
 
 **Does the panel pop up when I use a hotkey from the tray?** No. Hiding to the tray is not minimising: the panel is parked outside every monitor and removed from the taskbar, and eframe can still host the capture overlay on it. Only a panel you minimised by hand has to be restored for the overlay (and it goes back afterwards).
 
-**Does the update check phone home?** No. It requests GitHub once, when you click it, through WinHTTP (so your system proxy applies); failures are reported and not retried. To upgrade, use "Open releases page" and install the new setup yourself.
+**Does the update check phone home?** No. It requests GitHub once, when you click it, through WinHTTP (so your system proxy applies); failures are reported and not retried.
+
+**What does "Update now" actually do?** A background thread downloads the release installer into `%TEMP%\RustShot\update\` and compares its SHA-256 with the release's `SHA256SUMS.txt`. Only on a match does a hidden helper take over: wait for the app to exit, run the setup with `/VERYSILENT` (that one UAC prompt cannot be avoided — it writes to `Program Files` and `HKLM`), then start the new build with `--panel`. A checksum mismatch, a broken download or a cancelled UAC leaves the current install exactly as it was. Auto-update is installed-copy only: a portable build is a bare exe, so the dialog just points at the releases page for a fresh portable zip.
+
 
 **Nothing appeared when I double-clicked?** That is intended: RustShot is a tray app, so starting it (including autostart) does not open a panel — press F1 / F2 and capture right away. To see the panel, right click the tray icon → Show panel, or run `rust_shot --panel`. Launching it again while it is running just exits quietly.
 
@@ -337,7 +351,7 @@ rust_shot/
 
 **Want a different annotation?** Open an issue and describe the scenario — that is more useful than silence.
 
-**Credits**: the tool stands on the Rust ecosystem, GitHub (hosting and CI), VS Code and CodeBuddy (development environment), and QwenWork and DeepSeek (AI assistance) — see [ACKNOWLEDGEMENTS.en.md](ACKNOWLEDGEMENTS.en.md).
+**Credits**: the tool stands on the Rust ecosystem, GitHub (hosting and CI), VS Code / CodeBuddy / WorkBuddy (development and collaboration), and QwenWork and DeepSeek (AI assistance) — see [ACKNOWLEDGEMENTS.en.md](ACKNOWLEDGEMENTS.en.md).
 
 ## License
 

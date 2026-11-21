@@ -2,29 +2,22 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
-mod apply;
 mod capture;
 mod config;
-mod fonts;
-mod i18n;
-mod overlay;
-mod proxy;
-mod sha256;
-mod shapes;
+mod platform;
 mod theme;
+mod ui;
 mod update;
-mod util;
-mod win;
-mod worker;
 
 use capture::PhysRect;
+use config::i18n::{strings, tr};
 
 fn main() {
-    util::install_panic_logger();
+    platform::util::install_panic_logger();
     capture::set_dpi_aware();
     // The help box and the window title need the language before the app exists.
-    i18n::set(i18n::resolve(config::Config::load().lang));
-    util::log(&format!(
+    config::i18n::set(config::i18n::resolve(config::Config::load().lang));
+    platform::util::log(&format!(
         "start args={:?}",
         std::env::args().skip(1).collect::<Vec<_>>()
     ));
@@ -44,12 +37,10 @@ fn main() {
                 .map(std::path::PathBuf::from)
                 .or_else(|| std::env::current_exe().ok())
                 .unwrap_or_else(|| std::path::PathBuf::from(source));
-            apply::run(pid, std::path::Path::new(source), &app);
+            update::apply::run(pid, std::path::Path::new(source), &app);
         }
         return;
     }
-    // A portable copy leaves `rust_shot.exe.old` behind after swapping.
-    apply::cleanup_old_exe();
     // `None` = no flag given: a plain launch parks itself in the tray.
     let mut requested: Option<app::Start> = None;
     let mut selftest: Option<String> = None;
@@ -83,10 +74,10 @@ fn main() {
         return;
     }
 
-    let already = worker::instance_exists();
+    let already = app::worker::instance_exists();
     let (start, forward) = resolve_launch(requested, already);
     if let Some(cmd) = forward
-        && worker::forward_to_running(cmd)
+        && app::worker::forward_to_running(cmd)
     {
         return;
     }
@@ -94,7 +85,7 @@ fn main() {
         return;
     };
 
-    let icon = app::app_icon(64);
+    let icon = ui::tray::app_icon(64);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(app::panel_title())
@@ -109,9 +100,9 @@ fn main() {
         options,
         Box::new(move |cc| Ok(Box::new(app::App::new(cc, start)))),
     ) {
-        util::log(&format!("eframe exited with error: {e}"));
+        platform::util::log(&format!("eframe exited with error: {e}"));
     }
-    util::log("app loop finished");
+    platform::util::log("app loop finished");
 }
 
 /// What this process should do, given its flags and the single-instance state.
@@ -127,10 +118,10 @@ fn resolve_launch(
         (None, true) | (Some(app::Start::Tray), true) => (None, None),
         (None, false) | (Some(app::Start::Tray), false) => (Some(app::Start::Tray), None),
         // Explicit window request: hand it to the running instance.
-        (Some(app::Start::Panel), true) => (None, Some(worker::CMD_PANEL)),
-        (Some(app::Start::Region), true) => (None, Some(worker::CMD_REGION)),
-        (Some(app::Start::Full), true) => (None, Some(worker::CMD_FULL)),
-        (Some(app::Start::Check), true) => (None, Some(worker::CMD_CHECK_UPDATE)),
+        (Some(app::Start::Panel), true) => (None, Some(app::worker::CMD_PANEL)),
+        (Some(app::Start::Region), true) => (None, Some(app::worker::CMD_REGION)),
+        (Some(app::Start::Full), true) => (None, Some(app::worker::CMD_FULL)),
+        (Some(app::Start::Check), true) => (None, Some(app::worker::CMD_CHECK_UPDATE)),
         (Some(start), false) => (Some(start), None),
     }
 }
@@ -139,26 +130,8 @@ fn resolve_launch(
 fn show_help() {
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK, MessageBoxW};
     use windows::core::PCWSTR;
-    const ZH: &str = "RustShot\n\n\
-         无参数            启动后常驻托盘（不弹主面板；已在运行则静默退出）\n\
-         --panel, --show   启动并显示主面板\n\
-         --capture, -c     立即区域截图\n\
-         --full, -f        立即全屏截图到剪贴板\n\
-         --check-update    检查更新（发现新版本时按 auto_update 设置处理）\n\
-         --tray, --silent  同“无参数”，开机自启用\n\
-         --selftest <png>  离屏渲染一张测试图并退出\n\n\
-         全局热键：F1 区域截图 · F2 全屏 · Ctrl+Alt+Q 退出";
-    const EN: &str = "RustShot\n\n\
-         (no args)         start in the tray (already running: exit quietly)\n\
-         --panel, --show   start with the main panel\n\
-         --capture, -c     region capture right away\n\
-         --full, -f        full screen to the clipboard (no overlay)\n\
-         --check-update    check for updates (honours auto_update)\n\
-         --tray, --silent  same as no arguments (used by autostart)\n\
-         --selftest <png>  render a test image and exit\n\n\
-         Hotkeys: F1 region - F2 full screen - Ctrl+Alt+Q quit";
-    let text = util::wide(i18n::tr(ZH, EN));
-    let title = util::wide("RustShot");
+    let text = platform::util::wide(tr(strings::HELP_MESSAGE));
+    let title = platform::util::wide("RustShot");
     unsafe {
         MessageBoxW(
             None,
@@ -181,7 +154,7 @@ fn selftest_run(out: &str) {
     let h = (frame.h as i32 - 160).clamp(150, 600);
     let sel = PhysRect::new(60, 60, w, h);
     let shapes = demo_shapes(&frame, sel);
-    let img = shapes::render(&frame, sel, &shapes);
+    let img = capture::shapes::render(&frame, sel, &shapes);
     if let Some(parent) = std::path::Path::new(out).parent()
         && !parent.as_os_str().is_empty()
     {
@@ -202,8 +175,8 @@ fn selftest_run(out: &str) {
     }
 }
 
-fn demo_shapes(frame: &capture::Frame, sel: PhysRect) -> Vec<shapes::Shape> {
-    use shapes::Shape;
+fn demo_shapes(frame: &capture::Frame, sel: PhysRect) -> Vec<capture::shapes::Shape> {
+    use capture::shapes::Shape;
     let red = egui::Color32::from_rgb(232, 69, 60);
     let yellow = egui::Color32::from_rgb(247, 201, 72);
     let blue = egui::Color32::from_rgb(42, 127, 255);
@@ -263,7 +236,7 @@ fn demo_shapes(frame: &capture::Frame, sel: PhysRect) -> Vec<shapes::Shape> {
         },
         Shape::Text {
             pos: (sel.x as f32 + 60.0, sel.y as f32 + 420.0),
-            text: "RustShot 标注测试：文字 / 中文 / 123".to_string(),
+            text: tr(strings::SELFTEST).to_string(),
             color: yellow,
             size: 28.0,
         },
@@ -290,7 +263,7 @@ mod tests {
     fn explicit_window_requests_reach_the_running_instance() {
         assert_eq!(
             resolve_launch(Some(app::Start::Panel), true),
-            (None, Some(worker::CMD_PANEL))
+            (None, Some(app::worker::CMD_PANEL))
         );
         assert_eq!(
             resolve_launch(Some(app::Start::Panel), false),
@@ -298,11 +271,11 @@ mod tests {
         );
         assert_eq!(
             resolve_launch(Some(app::Start::Region), true),
-            (None, Some(worker::CMD_REGION))
+            (None, Some(app::worker::CMD_REGION))
         );
         assert_eq!(
             resolve_launch(Some(app::Start::Full), true),
-            (None, Some(worker::CMD_FULL))
+            (None, Some(app::worker::CMD_FULL))
         );
     }
 }

@@ -1,11 +1,12 @@
 //! The full-screen frozen-image overlay: region selection + annotation.
 
+use crate::config::i18n::strings;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use crate::capture::shapes::{self, Col, Px, Shape};
 use crate::capture::{Frame, PhysRect};
-use crate::i18n::tr;
-use crate::shapes::{self, Col, Px, Shape};
+use crate::config::i18n::tr;
 
 /// Each capture gets its own window title so `FindWindowW` can never pick up
 /// the overlay of another instance (or the previous capture).
@@ -38,13 +39,13 @@ pub enum Tool {
 impl Tool {
     pub fn label(self) -> &'static str {
         match self {
-            Tool::Select => tr("选择", "Select"),
-            Tool::Rect => tr("矩形", "Rect"),
-            Tool::Arrow => tr("箭头", "Arrow"),
-            Tool::Pen => tr("画笔", "Pen"),
-            Tool::Text => tr("文字", "Text"),
-            Tool::Mosaic => tr("马赛克", "Mosaic"),
-            Tool::Number => tr("序号", "Number"),
+            Tool::Select => tr(strings::SELECT),
+            Tool::Rect => tr(strings::RECT),
+            Tool::Arrow => tr(strings::ARROW),
+            Tool::Pen => tr(strings::PEN),
+            Tool::Text => tr(strings::TEXT),
+            Tool::Mosaic => tr(strings::MOSAIC),
+            Tool::Number => tr(strings::NUMBER),
         }
     }
     pub fn icon(self) -> &'static str {
@@ -230,7 +231,7 @@ impl Session {
         let ctx = ui.ctx().clone();
         let screen = ctx.viewport_rect();
         if self.fix_tries == 0 {
-            crate::util::log(&format!(
+            crate::platform::util::log(&format!(
                 "overlay frame0 ppp={:.4} screen={screen:?} frame={}x{} monitor={:?}",
                 ctx.pixels_per_point(),
                 self.frame.w,
@@ -244,10 +245,10 @@ impl Session {
         // window, and a couple of black frames read as a "flash" before the
         // frozen image shows up.
         if self.fix_tries < 8 {
-            let ok = crate::win::force_rect_by_title(&self.title, self.monitor);
+            let ok = crate::platform::win::force_rect_by_title(&self.title, self.monitor);
             self.fix_tries += 1;
             if ok && self.fix_tries > 2 {
-                crate::util::log("overlay geometry pinned");
+                crate::platform::util::log("overlay geometry pinned");
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 self.fix_tries = 8;
             }
@@ -390,10 +391,7 @@ impl Session {
             painter.text(
                 egui::pos2(screen.center().x, screen.top() + 42.0),
                 egui::Align2::CENTER_TOP,
-                tr(
-                    "拖动鼠标框选区域 · 单击选中窗口 · 右键或 ESC 取消",
-                    "Drag a region · click a window · right-click or ESC to cancel",
-                ),
+                tr(strings::DRAG_A_REGION_CLICK_A_WINDOW_RIGHT_CLICK_OR_ESC),
                 egui::FontId::proportional(15.0),
                 egui::Color32::from_white_alpha(210),
             );
@@ -970,11 +968,11 @@ impl Session {
                             ui.separator();
                             for w in WIDTHS {
                                 let label = if w < 3.0 {
-                                    tr("细", "S")
+                                    tr(strings::S)
                                 } else if w < 6.0 {
-                                    tr("中", "M")
+                                    tr(strings::M)
                                 } else {
-                                    tr("粗", "L")
+                                    tr(strings::L)
                                 };
                                 if ui
                                     .selectable_label((self.width - w).abs() < 0.01, label)
@@ -1011,16 +1009,16 @@ impl Session {
                                 }
                             }
                             ui.separator();
-                            if ui.button(tr("撤销", "Undo")).clicked() {
+                            if ui.button(tr(strings::UNDO)).clicked() {
                                 undo = true;
                             }
-                            if ui.button(tr("复制", "Copy")).clicked() {
+                            if ui.button(tr(strings::COPY)).clicked() {
                                 export = Some(Export::Copy);
                             }
-                            if ui.button(tr("保存", "Save")).clicked() {
+                            if ui.button(tr(strings::SAVE)).clicked() {
                                 export = Some(Export::Save);
                             }
-                            if ui.button(tr("取消", "Cancel")).clicked() {
+                            if ui.button(tr(strings::CANCEL)).clicked() {
                                 cancel = true;
                             }
                         });

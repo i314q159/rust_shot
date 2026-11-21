@@ -1,9 +1,9 @@
 # RustShot
 
-**7 MB 的 Windows 截图 / 标注工具：`F1` 冻结屏幕、拖选、加几笔、回车即复制。**
+**小巧的 Windows 截图 / 标注工具：`F1` 冻结屏幕、拖选、加几笔、回车即复制。**
 单文件绿色版，或用安装包装进 `C:\Program Files`；无运行库依赖，配置跟着 exe 走。
 
-> RustShot is a tiny screenshot & annotation tool for Windows. No runtime, no telemetry — one 7 MB exe for a USB stick, or a Setup.exe that installs machine-wide.
+> RustShot is a tiny screenshot & annotation tool for Windows. No runtime, no telemetry — one small exe for a USB stick, or a Setup.exe that installs machine-wide.
 
 **简体中文** · [English](README.en.md)
 
@@ -11,7 +11,7 @@
 [![Release](https://img.shields.io/github/v/release/i314q159/rust_shot?style=flat-square&color=2F81F7)](https://github.com/i314q159/rust_shot/releases)
 [![Rust](https://img.shields.io/badge/rust-edition%202024-CE412B?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE-MIT.md)
-[![Size](https://img.shields.io/badge/exe-7.5%20MB-lightgrey?style=flat-square)](#下载)
+[![Size](https://img.shields.io/badge/exe-tiny-lightgrey?style=flat-square)](#下载)
 [![Runtime](https://img.shields.io/badge/runtime-none-success?style=flat-square)](#下载)
 [![Offline](https://img.shields.io/badge/network-not%20required-success?style=flat-square)](#已知限制)
 
@@ -74,19 +74,21 @@
 
 **常驻** — 直接启动（双击 / 开始菜单 / 开机自启）就是托盘应用：窗口在第一帧之前就移出屏幕，桌面不会闪出面板，F1 / F2 随时可用；要看面板用 `--panel` 或托盘右键「显示主面板」。点 × 也是隐藏到托盘（窗口移到屏幕外并退出任务栏，不会残留在 Alt+Tab 里）；托盘左键直接截图，右键菜单切换区域 / 全屏 / 主面板 / 退出；单实例，重复启动不会重复弹窗。
 
-**检查更新** — 顶部 `帮助 → 检查更新` 读取 GitHub 的 release 发布页，和当前版本号比较：发现新版本时弹窗列出发布说明，一键打开发布页下载；已是最新则直接提示。菜单栏右上角会出现 `可更新 vX.Y.Z` 标记，点开即可回看。只在点击时联网，不后台轮询；`api.github.com` 访问不了时自动改用发布页重定向兜底。
+**检查更新 / 静默更新** — 顶部 `帮助 → 检查更新` 读取 GitHub 的 release 发布页并与当前版本比较：有新版本时弹窗列发布说明，点「立即更新」会在后台下载安装包、比对 `SHA256SUMS.txt` 校验，通过后静默安装并自动重启，全程只弹一次 UAC；校验不通过或取消 UAC 时旧版本原样保留。也可以点「打开发布页」自己下载。菜单栏右上角出现 `可更新 vX.Y.Z` 标记。勾上对话框里的「发现新版本后直接静默安装」后（写进 `config.toml` 的 `auto_update = 'silent'`），检查到新版本就直接开始这套流程。只在点击时联网，不后台轮询；`api.github.com` 访问不了时自动改用发布页重定向兜底。
 
-**主题** — 顶部 `主题` 菜单切换 `跟随系统 / 浅色 / 深色`，默认跟随 Windows 的浅色/深色设置：改系统设置时面板和截图工具栏一起变色，不用重启。手动选定的主题会写进 `config.txt`，固定使用、不再跟随系统。
+**更新代理** — `帮助 → 网络代理` 选 `系统代理 / 直连 / 手动地址`（对应 `config.toml` 里的 `proxy = 'system' | 'direct' | '127.0.0.1:12334'`，只写端口也行）；只作用于检查更新和下载安装包，改完下一次检查立即生效，环境变量/系统代理被绕过时不用再手改配置文件。
 
-**语言** — 界面中英双语，默认跟随 Windows 的显示语言（中文系统装中文，其它装英文）。顶部 `语言` 菜单可切 `跟随系统 / 中文 / English`，选定后写进 `config.txt`；切换即时生效，窗口标题、托盘菜单、截图工具栏、安装包界面一起换。
+**主题** — 顶部 `主题` 菜单切换 `跟随系统 / 浅色 / 深色`，默认跟随 Windows 的浅色/深色设置：改系统设置时面板和截图工具栏一起变色，不用重启。手动选定的主题会写进 `config.toml`，固定使用、不再跟随系统。
+
+**语言** — 界面中英双语，默认跟随 Windows 的显示语言（中文系统装中文，其它装英文）。顶部 `语言` 菜单可切 `跟随系统 / 中文 / English`，选定后写进 `config.toml`；切换即时生效，窗口标题、托盘菜单、截图工具栏、安装包界面一起换。
 
 **为什么不用 Snipaste / 系统截图**
 
 | | RustShot | 系统截图 | Snipaste |
 | --- | --- | --- | --- |
-| 体积 | 单文件 7.5 MB | 内置 | 安装包 + 依赖 |
+| 体积 | 单文件、无运行库依赖 | 内置 | 安装包 + 依赖 |
 | 标注 | 6 种 + 序号 + 马赛克 | 基础画笔 | 齐全（含贴图、取色） |
-| 便携配置 | `config.txt` 跟 exe 走 | — | 部分可配 |
+| 便携配置 | `config.toml` 跟 exe 走 | — | 部分可配 |
 | 贴图 / OCR / 滚动长截图 | 不做 | 不做 | 贴图有，OCR 无 |
 
 取舍很明确：只把「冻结 → 圈选 → 标注 → 交付」这一条路做到没有多余步骤。
@@ -183,9 +185,9 @@ F1 → 框选 → 6 用马赛克笔刷涂掉姓名 / 手机号 / 内网地址 �
 
 下载 `rust_shot.exe`，双击即用：
 
-1. 首次启动会在 **exe 同目录**生成 `config.txt`（便携配置）；
+1. 首次启动会在 **exe 同目录**生成 `config.toml`（便携配置）；
 2. 放在 `Program Files` 等只读目录时，配置自动回退到 `%LOCALAPPDATA%\RustShot\`；
-3. 想换默认保存位置：面板里点 `更改`，或直接编辑 `config.txt`。
+3. 想换默认保存位置：面板里点 `更改`，或直接编辑 `config.toml`。
 
 空闲时约 65 MB 私有内存（工作集约 100 MB），无后台服务、无联网。
 
@@ -203,15 +205,22 @@ rust_shot.exe --help, -h      用法说明
 
 ## 配置
 
-设置写在**程序同目录的 `config.txt`**，四行键值对，用记事本就能改：
+设置写在**程序同目录的 `config.toml`**，标准 TOML，用记事本就能改：
 
-```ini
+```toml
 # RustShot 配置（保存后重启生效；save_dir 支持 %USERPROFILE% 这类环境变量）
-save_dir=%USERPROFILE%\Pictures\RustShot
-auto_save=true
-theme=system
-lang=system
+# theme: system | light | dark   lang: system | zh | en
+# auto_update: notice | silent   proxy: 留空跟随系统 | direct | 7890 | host:port
+
+save_dir = '%USERPROFILE%\Pictures\RustShot'
+auto_save = true
+theme = 'system'
+lang = 'system'
+auto_update = 'notice'
+proxy = 'system'
 ```
+
+路径用单引号（TOML 字面量字符串），`C:\Users\…` 里的反斜杠不用再写两遍；值里带单引号时程序会自动改写为双引号形式。
 
 | 键 | 说明 |
 | --- | --- |
@@ -219,8 +228,10 @@ lang=system
 | `auto_save` | 复制到剪贴板时是否同时存 PNG（`true` / `false`） |
 | `theme` | 界面主题：`system` 跟随 Windows / `light` 浅色 / `dark` 深色，和顶部「主题」菜单是同一个开关 |
 | `lang` | 界面语言：`system` 跟随 Windows / `zh` 中文 / `en` English，和顶部「语言」菜单是同一个开关 |
+| `auto_update` | `notice` 只在对话框里提示（默认）/ `silent` 检查到新版本就直接静默安装，和更新对话框里的勾选框是同一个开关 |
+| `proxy` | 检查更新/下载用的代理：`system` 跟随 Windows（默认）、`direct` 直连、`7890`（自动补 `127.0.0.1`）、`host:port`；和 `帮助 → 网络代理` 是同一个开关 |
 
-面板上的 `更改` / `重置` 与顶部「主题」菜单会立刻写回配置文件；旧版本存放在 `%LOCALAPPDATA%\RustShot\config.txt` 的设置，首次启动时自动迁移。
+面板上的 `更改` / `重置` 与顶部「主题」「语言」菜单会立刻写回配置文件。旧版本用的 `config.txt`（程序目录或 `%LOCALAPPDATA%\RustShot`）会在首次启动时自动导入并改写成 `config.toml`，原文件保留为 `config.txt.bak`。
 
 诊断日志：`%LOCALAPPDATA%\RustShot\rustshot.log`（只记启动、异常和 panic）。
 
@@ -328,7 +339,10 @@ rust_shot/
 
 **隐藏到托盘后按热键，面板会不会跳出来？** 不会。隐藏时主面板不是最小化，而是被移到所有屏幕之外并退出任务栏——eframe 仍能从它身上创建截图覆盖层，所以 F1 / F2 / 托盘截图都不会把面板显示出来，也不会抢走焦点。只有你自己在任务栏上手动最小化了面板时，才需要为覆盖层临时恢复它（截图结束自动退回）。
 
-**检查更新会自己联网吗？** 不会。只有点「检查更新」时请求一次 GitHub，走系统 WinHTTP（沿用系统代理设置），失败只提示不重试；想升级时点弹窗里的「打开发布页」自己下载安装包。
+**检查更新会自己联网吗？** 不会。只有点「检查更新」时请求一次 GitHub，走系统 WinHTTP（沿用系统代理设置），失败只提示不重试。
+
+**「立即更新」具体做了什么？** 后台线程把 release 里的安装包下载到 `%TEMP%\RustShot\update\`，与同一版本的 `SHA256SUMS.txt` 比对 SHA-256；一致才交给一个隐藏的 helper：等主程序退出 → 用 `/VERYSILENT` 静默安装（这一次 UAC 无法避免，因为要写 `Program Files` 和 `HKLM`）→ 用新版本以 `--panel` 重新启动。校验失败、下载中断、用户取消 UAC 都不会改动现有安装，旧版本仍然可用。自动更新只针对安装版：便携版是一颗裸 exe，对话框里只提示去发布页下载新的便携包，不会替换自身。
+
 
 **双击启动后没看到窗口？** 正常，RustShot 是常驻托盘的工具：启动（含开机自启）不弹面板，窗口在第一帧之前就移出屏幕，直接按 F1 / F2 就能截图。要看主面板：托盘图标右键 →「显示主面板」，或运行 `rust_shot --panel`。已在运行时再启动一次是静默退出，不会多开、也不会抢焦点。
 
@@ -336,7 +350,7 @@ rust_shot/
 
 **想要另一种标注方式？** 开个 Issue 说说场景，比沉默更有用。
 
-**致谢**：这个工具站在 Rust 生态、GitHub（代码托管与自动构建）、VS Code 与 CodeBuddy（开发环境）、QwenWork 与 DeepSeek（AI 协助）之上，详见 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。
+**致谢**：这个工具站在 Rust 生态、GitHub（代码托管与自动构建）、VS Code / CodeBuddy / WorkBuddy（开发与协作环境）、QwenWork 与 DeepSeek（AI 协助）之上，详见 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。
 
 ## 许可证
 

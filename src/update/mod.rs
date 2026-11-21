@@ -4,12 +4,16 @@
 //! HTTPS request and a small scanner pulls the handful of string fields we need
 //! out of the release JSON, so the binary does not grow a TLS stack or serde.
 
+pub(crate) mod apply;
+pub(crate) mod sha256;
+
+use crate::config::i18n::strings;
 use std::ffi::c_void;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
-use crate::i18n::{tr, tr1, tr2};
+use crate::config::i18n::{tr, tr1, tr2};
 use windows::Win32::Networking::WinHttp::{
     WINHTTP_FLAG_SECURE, WINHTTP_OPTION_URL, WINHTTP_QUERY_CONTENT_LENGTH,
     WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle, WinHttpConnect,
@@ -89,7 +93,7 @@ pub fn check_async() -> Receiver<Status> {
         .name("rustshot-update".into())
         .spawn(move || {
             let status = evaluate(fetch_latest());
-            crate::util::log(&format!("update check: {status:?}"));
+            crate::platform::util::log(&format!("update check: {status:?}"));
             let _ = tx.send(status);
             crate::app::request_repaint();
         });
@@ -113,7 +117,6 @@ pub fn asset_url(version: &str, name: &str) -> String {
 pub fn setup_name(version: &str) -> String {
     format!("RustShot-Setup-{version}.exe")
 }
-pub const PORTABLE_NAME: &str = "rust_shot.exe";
 pub const SUMS_NAME: &str = "SHA256SUMS.txt";
 
 /// `%TEMP%\RustShot\update` — downloads land here and are swapped in later.
@@ -123,8 +126,8 @@ pub fn update_dir() -> PathBuf {
 
 /// Is this exe part of an installed copy (next to `unins000.exe`)?
 ///
-/// The portable build is a bare exe, so this is what decides between the
-/// "run the setup silently" path and the "replace the exe" path.
+/// Only installed copies self-update; a portable exe is just a bare file, so
+/// the update dialog points those users at the releases page instead.
 pub fn installed_copy() -> bool {
     std::env::current_exe()
         .map(|exe| installed_copy_at(&exe))
@@ -175,24 +178,15 @@ pub fn checksum_for(sums: &str, name: &str) -> Option<String> {
 
 /// SHA-256 of a file, lowercase hex.
 pub fn sha256_file(path: &Path) -> Result<String, String> {
-    let mut file = std::fs::File::open(path).map_err(|e| {
-        tr1(
-            "无法读取下载的文件：{}",
-            "cannot read the downloaded file: {}",
-            e,
-        )
-    })?;
-    let mut hasher = crate::sha256::Sha256::new();
+    let mut file =
+        std::fs::File::open(path).map_err(|e| tr1(strings::CANNOT_READ_THE_DOWNLOADED_FILE, e))?;
+    let mut hasher = crate::update::sha256::Sha256::new();
     let mut buf = vec![0u8; 64 * 1024];
     loop {
         use std::io::Read;
-        let n = file.read(&mut buf).map_err(|e| {
-            tr1(
-                "无法读取下载的文件：{}",
-                "cannot read the downloaded file: {}",
-                e,
-            )
-        })?;
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| tr1(strings::CANNOT_READ_THE_DOWNLOADED_FILE, e))?;
         if n == 0 {
             break;
         }
@@ -206,18 +200,12 @@ pub fn expected_sha(version: &str, asset: &str) -> Result<String, String> {
     let response = http_get(&asset_url(version, SUMS_NAME))?;
     if response.status != 200 {
         return Err(tr1(
-            "下载校验清单失败（HTTP {}）",
-            "could not fetch the checksum list (HTTP {})",
+            strings::COULD_NOT_FETCH_THE_CHECKSUM_LIST_HTTP,
             response.status,
         ));
     }
-    checksum_for(&response.body, asset).ok_or_else(|| {
-        tr1(
-            "校验清单里没有 {}",
-            "the checksum list does not mention {}",
-            asset,
-        )
-    })
+    checksum_for(&response.body, asset)
+        .ok_or_else(|| tr1(strings::THE_CHECKSUM_LIST_DOES_NOT_MENTION, asset))
 }
 
 /// Download `url` to `dest`, reporting `(received, total)` as it goes.
@@ -226,35 +214,30 @@ pub fn expected_sha(version: &str, asset: &str) -> Result<String, String> {
 /// download is deleted so a retry never picks up a half file.
 pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
     let (host, path) = split_https(url)?;
-    let host_w = crate::util::wide(&host);
-    let path_w = crate::util::wide(&path);
-    let verb = crate::util::wide("GET");
+    let host_w = crate::platform::util::wide(&host);
+    let path_w = crate::platform::util::wide(&path);
+    let verb = crate::platform::util::wide("GET");
     let headers = utf16(&format!(
         "Accept: application/octet-stream\r\nUser-Agent: RustShot/{CURRENT}\r\n"
     ));
 
     if let Some(dir) = dest.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| {
-            tr1(
-                "无法创建下载目录：{}",
-                "cannot create the download folder: {}",
-                e,
-            )
-        })?;
+        std::fs::create_dir_all(dir)
+            .map_err(|e| tr1(strings::CANNOT_CREATE_THE_DOWNLOAD_FOLDER, e))?;
     }
-    let mut file = std::fs::File::create(dest)
-        .map_err(|e| tr1("无法写入下载文件：{}", "cannot write the download: {}", e))?;
+    let mut file =
+        std::fs::File::create(dest).map_err(|e| tr1(strings::CANNOT_WRITE_THE_DOWNLOAD_2, e))?;
 
     let result = (|| -> Result<(), String> {
-        let session = crate::proxy::open(&format!("RustShot/{CURRENT}"))?;
+        let session = crate::config::proxy::open(&format!("RustShot/{CURRENT}"))?;
         // Downloads are big compared to the JSON check: give them more time.
         let _ = unsafe { WinHttpSetTimeouts(session.0, 10000, 15000, 15000, 60000) };
         let conn = Handle::new(
             unsafe { WinHttpConnect(session.0, PCWSTR(host_w.as_ptr()), 443, 0) },
             &format!(
                 "{}{}",
-                tr("无法连接 GitHub", "cannot reach GitHub"),
-                crate::proxy::hint()
+                tr(strings::CANNOT_REACH_GITHUB),
+                crate::config::proxy::hint()
             ),
         )?;
         let request = Handle::new(
@@ -269,26 +252,16 @@ pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> R
                     WINHTTP_FLAG_SECURE,
                 )
             },
-            tr("无法创建下载请求", "cannot create the download request"),
+            tr(strings::CANNOT_CREATE_THE_DOWNLOAD_REQUEST),
         )?;
-        unsafe { WinHttpSendRequest(request.0, Some(&headers), None, 0, 0, 0) }.map_err(
-            net_err(tr(
-                "下载请求发送失败",
-                "sending the download request failed",
-            )),
-        )?;
-        unsafe { WinHttpReceiveResponse(request.0, std::ptr::null_mut()) }.map_err(net_err(tr(
-            "读取下载响应失败",
-            "reading the download response failed",
-        )))?;
+        unsafe { WinHttpSendRequest(request.0, Some(&headers), None, 0, 0, 0) }
+            .map_err(net_err(tr(strings::SENDING_THE_DOWNLOAD_REQUEST_FAILED)))?;
+        unsafe { WinHttpReceiveResponse(request.0, std::ptr::null_mut()) }
+            .map_err(net_err(tr(strings::READING_THE_DOWNLOAD_RESPONSE_FAILED)))?;
 
         let status = status_code(request.0);
         if status != 200 {
-            return Err(tr1(
-                "下载更新包失败（HTTP {}）",
-                "the update download failed (HTTP {})",
-                status,
-            ));
+            return Err(tr1(strings::THE_UPDATE_DOWNLOAD_FAILED_HTTP, status));
         }
         let total = header_u64(request.0, WINHTTP_QUERY_CONTENT_LENGTH);
 
@@ -296,9 +269,8 @@ pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> R
         let mut last_report = 0u64;
         loop {
             let mut available = 0u32;
-            unsafe { WinHttpQueryDataAvailable(request.0, &mut available) }.map_err(net_err(
-                tr("读取下载响应失败", "reading the download response failed"),
-            ))?;
+            unsafe { WinHttpQueryDataAvailable(request.0, &mut available) }
+                .map_err(net_err(tr(strings::READING_THE_DOWNLOAD_RESPONSE_FAILED)))?;
             if available == 0 {
                 break;
             }
@@ -313,15 +285,12 @@ pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> R
                     &mut read,
                 )
             }
-            .map_err(net_err(tr(
-                "读取下载响应失败",
-                "reading the download response failed",
-            )))?;
+            .map_err(net_err(tr(strings::READING_THE_DOWNLOAD_RESPONSE_FAILED)))?;
             if read == 0 {
                 break;
             }
             file.write_all(&buf[..read as usize])
-                .map_err(|e| tr1("写入下载文件失败：{}", "cannot write the download: {}", e))?;
+                .map_err(|e| tr1(strings::CANNOT_WRITE_THE_DOWNLOAD, e))?;
             received += read as u64;
             // Report at most ~30 times a second, plus the final byte.
             if received - last_report >= 128 * 1024 {
@@ -330,10 +299,10 @@ pub fn download(url: &str, dest: &Path, mut progress: impl FnMut(u64, u64)) -> R
             }
         }
         file.flush()
-            .map_err(|e| tr1("写入下载文件失败：{}", "cannot write the download: {}", e))?;
+            .map_err(|e| tr1(strings::CANNOT_WRITE_THE_DOWNLOAD, e))?;
         progress(received, total);
         if received == 0 {
-            return Err(tr("下载到的文件是空的", "the downloaded file is empty").to_owned());
+            return Err(tr(strings::THE_DOWNLOADED_FILE_IS_EMPTY).to_owned());
         }
         Ok(())
     })();
@@ -366,7 +335,7 @@ fn header_u64(request: *mut c_void, query: u32) -> u64 {
 /// Open a URL with the user's default browser.
 pub fn open_page(url: &str) {
     let _ = std::process::Command::new("explorer").arg(url).spawn();
-    crate::util::log(&format!("opened {url}"));
+    crate::platform::util::log(&format!("opened {url}"));
 }
 
 /// Fetch and parse the latest release.
@@ -379,13 +348,8 @@ pub fn fetch_latest() -> Result<Release, String> {
     // "update available" dialog is verifiable without bumping the version.
     #[cfg(debug_assertions)]
     if let Some(path) = std::env::var_os("RUSTSHOT_UPDATE_JSON") {
-        let text = std::fs::read_to_string(&path).map_err(|e| {
-            tr1(
-                "读取测试数据失败：{}",
-                "could not read the test payload: {}",
-                e,
-            )
-        })?;
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| tr1(strings::COULD_NOT_READ_THE_TEST_PAYLOAD, e))?;
         return parse_release(&text);
     }
     let api = fetch_from_api();
@@ -397,8 +361,7 @@ pub fn fetch_latest() -> Result<Release, String> {
         Err(page_err) => {
             let api_err = api.unwrap_err();
             Err(tr2(
-                "{}（发布页也读取失败：{}）",
-                "{} (the releases page failed too: {})",
+                strings::THE_RELEASES_PAGE_FAILED_TOO,
                 api_err,
                 page_err,
             ))
@@ -411,17 +374,9 @@ fn fetch_from_api() -> Result<Release, String> {
     let response = http_get(API_URL)?;
     match response.status {
         200 => parse_release(&response.body),
-        403 | 429 => Err(tr(
-            "GitHub 接口访问受限（可能被限流）",
-            "GitHub rate-limited the request",
-        )
-        .to_owned()),
-        404 => Err(tr("GitHub 接口没有找到发布记录", "no releases found").to_owned()),
-        code => Err(tr1(
-            "GitHub 接口返回 HTTP {}",
-            "the GitHub API returned HTTP {}",
-            code,
-        )),
+        403 | 429 => Err(tr(strings::GITHUB_RATE_LIMITED_THE_REQUEST).to_owned()),
+        404 => Err(tr(strings::NO_RELEASES_FOUND).to_owned()),
+        code => Err(tr1(strings::THE_GITHUB_API_RETURNED_HTTP, code)),
     }
 }
 
@@ -430,20 +385,14 @@ fn fetch_from_page() -> Result<Release, String> {
     let response = http_get(RELEASES_URL)?;
     if response.status != 200 {
         return Err(tr1(
-            "发布页返回 HTTP {}",
-            "the releases page returned HTTP {}",
+            strings::THE_RELEASES_PAGE_RETURNED_HTTP,
             response.status,
         ));
     }
-    let tag = tag_from_release_url(&response.url).ok_or_else(|| {
-        tr(
-            "发布页地址里没有版本号",
-            "no version in the releases page URL",
-        )
-        .to_owned()
-    })?;
-    let version = normalize_version(&tag)
-        .ok_or_else(|| tr1("无法解析版本号 {}", "cannot parse version {}", &tag))?;
+    let tag = tag_from_release_url(&response.url)
+        .ok_or_else(|| tr(strings::NO_VERSION_IN_THE_RELEASES_PAGE_URL).to_owned())?;
+    let version =
+        normalize_version(&tag).ok_or_else(|| tr1(strings::CANNOT_PARSE_VERSION, &tag))?;
     Ok(Release {
         version,
         tag,
@@ -524,18 +473,12 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
             .find(|(k, _)| k == key)
             .map(|(_, v)| v.clone())
     };
-    let tag = get("tag_name").ok_or_else(|| {
-        tr(
-            "GitHub 返回的数据缺少 tag_name",
-            "the payload has no tag_name",
-        )
-    })?;
-    let version = normalize_version(&tag)
-        .ok_or_else(|| tr1("无法解析版本号 {}", "cannot parse version {}", &tag))?;
+    let tag = get("tag_name").ok_or_else(|| tr(strings::THE_PAYLOAD_HAS_NO_TAG_NAME))?;
+    let version =
+        normalize_version(&tag).ok_or_else(|| tr1(strings::CANNOT_PARSE_VERSION, &tag))?;
     let mut notes = get("body").unwrap_or_default().replace("\r\n", "\n");
     if notes.chars().count() > 4000 {
-        notes = notes.chars().take(4000).collect::<String>()
-            + tr("\n…（内容过长，已截断）", "\n… (truncated)");
+        notes = notes.chars().take(4000).collect::<String>() + tr(strings::TRUNCATED);
     }
     Ok(Release {
         version,
@@ -573,7 +516,7 @@ impl Drop for Handle {
 }
 
 fn net_err(what: &str) -> impl Fn(windows::core::Error) -> String {
-    move |e| format!("{what}（{}）", e.code().0)
+    move |e| tr2(strings::UPDATE_NET_ERROR, what, e.code().0)
 }
 
 /// A finished HTTP response: status, final (post-redirect) URL and body text.
@@ -589,9 +532,9 @@ fn http_get(url: &str) -> Result<HttpResponse, String> {
     let (host, path) = split_https(url)?;
     // The `W` entry points expect NUL terminated strings (`wide`); the header
     // block is passed with an explicit length instead.
-    let host_w = crate::util::wide(&host);
-    let path_w = crate::util::wide(&path);
-    let verb = crate::util::wide("GET");
+    let host_w = crate::platform::util::wide(&host);
+    let path_w = crate::platform::util::wide(&path);
+    let verb = crate::platform::util::wide("GET");
     // GitHub rejects requests without a User-Agent header.
     let headers = utf16(&format!(
         "Accept: application/vnd.github+json, text/html\r\n\
@@ -599,12 +542,12 @@ fn http_get(url: &str) -> Result<HttpResponse, String> {
          X-GitHub-Api-Version: 2022-11-28\r\n"
     ));
 
-    let session = crate::proxy::open(&format!("RustShot/{CURRENT}"))?;
+    let session = crate::config::proxy::open(&format!("RustShot/{CURRENT}"))?;
     let _ = unsafe { WinHttpSetTimeouts(session.0, 5000, 8000, 8000, 12000) };
 
     let conn = Handle::new(
         unsafe { WinHttpConnect(session.0, PCWSTR(host_w.as_ptr()), 443, 0) },
-        tr("无法连接 GitHub", "cannot reach GitHub"),
+        tr(strings::CANNOT_REACH_GITHUB),
     )?;
 
     let request = Handle::new(
@@ -619,16 +562,13 @@ fn http_get(url: &str) -> Result<HttpResponse, String> {
                 WINHTTP_FLAG_SECURE,
             )
         },
-        tr("无法创建更新请求", "cannot create the update request"),
+        tr(strings::CANNOT_CREATE_THE_UPDATE_REQUEST),
     )?;
 
-    unsafe { WinHttpSendRequest(request.0, Some(&headers), None, 0, 0, 0) }.map_err(net_err(
-        tr("更新请求发送失败", "sending the update request failed"),
-    ))?;
-    unsafe { WinHttpReceiveResponse(request.0, std::ptr::null_mut()) }.map_err(net_err(tr(
-        "读取更新响应失败",
-        "reading the update response failed",
-    )))?;
+    unsafe { WinHttpSendRequest(request.0, Some(&headers), None, 0, 0, 0) }
+        .map_err(net_err(tr(strings::SENDING_THE_UPDATE_REQUEST_FAILED)))?;
+    unsafe { WinHttpReceiveResponse(request.0, std::ptr::null_mut()) }
+        .map_err(net_err(tr(strings::READING_THE_UPDATE_RESPONSE_FAILED)))?;
 
     let status = status_code(request.0);
     let url = if status == 200 {
@@ -647,10 +587,10 @@ fn http_get(url: &str) -> Result<HttpResponse, String> {
 fn split_https(url: &str) -> Result<(String, String), String> {
     let rest = url
         .strip_prefix("https://")
-        .ok_or_else(|| tr("只支持 https 地址", "only https URLs are supported").to_owned())?;
+        .ok_or_else(|| tr(strings::ONLY_HTTPS_URLS_ARE_SUPPORTED).to_owned())?;
     let (host, tail) = rest.split_once('/').unwrap_or((rest, ""));
     if host.is_empty() {
-        return Err(tr("更新地址缺少主机名", "the update URL has no host").to_owned());
+        return Err(tr(strings::THE_UPDATE_URL_HAS_NO_HOST).to_owned());
     }
     let path = if tail.is_empty() {
         "/".to_owned()
@@ -713,10 +653,8 @@ fn read_body(request: *mut c_void) -> Result<String, String> {
     let mut body: Vec<u8> = Vec::new();
     loop {
         let mut available = 0u32;
-        unsafe { WinHttpQueryDataAvailable(request, &mut available) }.map_err(net_err(tr(
-            "读取更新响应失败",
-            "reading the update response failed",
-        )))?;
+        unsafe { WinHttpQueryDataAvailable(request, &mut available) }
+            .map_err(net_err(tr(strings::READING_THE_UPDATE_RESPONSE_FAILED)))?;
         if available == 0 {
             break;
         }
@@ -731,25 +669,16 @@ fn read_body(request: *mut c_void) -> Result<String, String> {
                 &mut read,
             )
         }
-        .map_err(net_err(tr(
-            "读取更新响应失败",
-            "reading the update response failed",
-        )))?;
+        .map_err(net_err(tr(strings::READING_THE_UPDATE_RESPONSE_FAILED)))?;
         if read == 0 {
             break;
         }
         body.extend_from_slice(&buf[..read as usize]);
         if body.len() > 1024 * 1024 {
-            return Err(tr("GitHub 返回的内容过大", "the GitHub response is too large").to_owned());
+            return Err(tr(strings::THE_GITHUB_RESPONSE_IS_TOO_LARGE).to_owned());
         }
     }
-    String::from_utf8(body).map_err(|_| {
-        tr(
-            "GitHub 返回的内容不是 UTF-8",
-            "the GitHub response is not UTF-8",
-        )
-        .to_owned()
-    })
+    String::from_utf8(body).map_err(|_| tr(strings::THE_GITHUB_RESPONSE_IS_NOT_UTF_8).to_owned())
 }
 
 // ---------------------------------------------------------------------- json
@@ -1035,7 +964,7 @@ mod tests {
             "https://github.com/i314q159/rust_shot/releases/download/v0.2.0/RustShot-Setup-0.2.0.exe"
         );
         assert_eq!(
-            asset_url("0.2.0", PORTABLE_NAME),
+            asset_url("0.2.0", "rust_shot.exe"),
             "https://github.com/i314q159/rust_shot/releases/download/v0.2.0/rust_shot.exe"
         );
         assert!(asset_url("0.2.0", SUMS_NAME).ends_with("/v0.2.0/SHA256SUMS.txt"));

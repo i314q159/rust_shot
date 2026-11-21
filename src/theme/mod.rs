@@ -5,9 +5,16 @@
 //! into the global palette so hand-painted chrome (size tag, notes card,
 //! toolbar) uses exactly the same colours as the widgets.
 
+use crate::config::i18n::strings;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use egui::Color32;
+
+mod dark;
+mod light;
+
+pub use dark::DARK;
+pub use light::LIGHT;
 
 /// One complete set of chrome colours.
 pub struct Palette {
@@ -45,44 +52,6 @@ pub struct Palette {
     pub widget_stroke: Color32,
 }
 
-pub const LIGHT: Palette = Palette {
-    bg: Color32::from_rgb(0xF7, 0xF8, 0xFA),
-    card: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-    bar: Color32::from_rgb(0xEF, 0xF1, 0xF4),
-    line: Color32::from_rgb(0xDC, 0xE0, 0xE6),
-    text: Color32::from_rgb(0x1F, 0x23, 0x29),
-    text_weak: Color32::from_rgb(0x5C, 0x63, 0x6E),
-    text_faint: Color32::from_rgb(0x8A, 0x91, 0x9C),
-    accent: Color32::from_rgb(0x2A, 0x7F, 0xFF),
-    accent_soft: Color32::from_rgb(0xE4, 0xEF, 0xFF),
-    ok: Color32::from_rgb(0x1E, 0x8E, 0x5A),
-    warn: Color32::from_rgb(0xC0, 0x4A, 0x32),
-    hint: Color32::from_rgb(0xF1, 0xF3, 0xF6),
-    widget: Color32::from_rgb(0xF2, 0xF4, 0xF7),
-    widget_hover: Color32::from_rgb(0xE6, 0xEA, 0xF1),
-    widget_active: Color32::from_rgb(0xD9, 0xDF, 0xE8),
-    widget_stroke: Color32::from_rgb(0xC2, 0xC9, 0xD4),
-};
-
-pub const DARK: Palette = Palette {
-    bg: Color32::from_rgb(0x1A, 0x1C, 0x20),
-    card: Color32::from_rgb(0x24, 0x27, 0x2C),
-    bar: Color32::from_rgb(0x15, 0x17, 0x1B),
-    line: Color32::from_rgb(0x34, 0x38, 0x3F),
-    text: Color32::from_rgb(0xE7, 0xE9, 0xED),
-    text_weak: Color32::from_rgb(0xA9, 0xB1, 0xBC),
-    text_faint: Color32::from_rgb(0x85, 0x8E, 0x99),
-    accent: Color32::from_rgb(0x55, 0x98, 0xFF),
-    accent_soft: Color32::from_rgb(0x1E, 0x33, 0x52),
-    ok: Color32::from_rgb(0x4F, 0xC2, 0x8C),
-    warn: Color32::from_rgb(0xE8, 0x83, 0x6A),
-    hint: Color32::from_rgb(0x20, 0x23, 0x29),
-    widget: Color32::from_rgb(0x2A, 0x2E, 0x34),
-    widget_hover: Color32::from_rgb(0x34, 0x3A, 0x42),
-    widget_active: Color32::from_rgb(0x3C, 0x43, 0x4C),
-    widget_stroke: Color32::from_rgb(0x4A, 0x52, 0x60),
-};
-
 /// Which palette is live right now (mirrors egui's resolved theme).
 static DARK_ACTIVE: AtomicBool = AtomicBool::new(false);
 
@@ -117,9 +86,9 @@ impl Preference {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::System => crate::i18n::tr("跟随系统", "Follow system"),
-            Self::Light => crate::i18n::tr("浅色", "Light"),
-            Self::Dark => crate::i18n::tr("深色", "Dark"),
+            Self::System => crate::config::i18n::tr(strings::FOLLOW_SYSTEM),
+            Self::Light => crate::config::i18n::tr(strings::LIGHT),
+            Self::Dark => crate::config::i18n::tr(strings::DARK),
         }
     }
 }
@@ -201,8 +170,10 @@ pub fn system_is_dark() -> bool {
     use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
     use windows::core::PCWSTR;
 
-    let subkey = crate::util::wide(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-    let name = crate::util::wide("AppsUseLightTheme");
+    let subkey = crate::platform::util::wide(
+        r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+    );
+    let name = crate::platform::util::wide("AppsUseLightTheme");
     let mut value = 1u32;
     let mut size = std::mem::size_of::<u32>() as u32;
     let status = unsafe {
