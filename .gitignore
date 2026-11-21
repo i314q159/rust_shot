@@ -5,9 +5,9 @@ outputs/
 .vscode/*
 .venv/
 venv/
-tests/
+__pycache__/
+*.pyc
 config.toml
-config.txt
 release-notes.md
 *.log
 .DS_Store
