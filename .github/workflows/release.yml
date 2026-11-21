@@ -1,0 +1,199 @@
+name: Release
+
+# 打标签即发版： git tag v0.1.0 && git push origin v0.1.0
+# 标签必须与 Cargo.toml 的 version 一致（v0.1.0 ←→ version = "0.1.0"），否则构建直接失败。
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: 构建并发布 ${{ github.ref_name }}
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码（取全量历史，用于生成变更列表）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 安装 Rust 工具链（stable + rustfmt + clippy）
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 缓存 cargo 产物
+        uses: swatinem/rust-cache@v2
+
+      - name: 校验标签与 Cargo.toml 版本一致
+        id: version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"$').Matches[0].Groups[1].Value
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag -ne "v$version") {
+            Write-Host "::error::标签 $tag 与 Cargo.toml 的 version = `"$version`" 不一致。先把 Cargo.toml 改成 $($tag.TrimStart('v')) 并提交，再重新打标签。"
+            exit 1
+          }
+          Write-Host "RustShot $version"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$version" -Encoding utf8
+
+      - name: 质量门（fmt / clippy / test）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo fmt --check
+          if ($LASTEXITCODE -ne 0) { throw 'cargo fmt --check 失败' }
+          cargo clippy --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'cargo clippy 有告警' }
+          cargo test
+          if ($LASTEXITCODE -ne 0) { throw 'cargo test 失败' }
+
+      - name: 安装 Inno Setup 6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # windows-latest 不预装 Inno Setup；已装过时 choco 会返回非零，所以以 ISCC 是否存在为准。
+          choco install innosetup --no-progress -y
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $iscc)) { throw "未找到 ISCC.exe（$iscc）" }
+          Write-Host "ISCC: $iscc"
+
+      - name: 构建 exe 与安装包
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # 复用仓库里的构建脚本：cargo build --release → outputs\rust_shot.exe → ISCC 编译安装包。
+          pwsh -NoProfile -File installer\build.ps1
+          if ($LASTEXITCODE -ne 0) { throw "installer\build.ps1 失败（exit $LASTEXITCODE）" }
+          foreach ($f in @('outputs\rust_shot.exe', "outputs\RustShot-Setup-$env:VERSION.exe")) {
+            if (-not (Test-Path -LiteralPath $f)) { throw "缺少产物：$f" }
+          }
+
+      - name: 打包便携版并生成 SHA-256
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP "RustShot-$env:VERSION"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -LiteralPath 'outputs\rust_shot.exe', 'README.md', 'LICENSE-MIT.md' -Destination $stage
+          $zip = "outputs\RustShot-$env:VERSION-portable.zip"
+          # -Force 直接覆盖同名 zip，不需要先删文件。
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
+
+          $sums = Get-ChildItem -Path 'outputs\*.exe', 'outputs\*.zip' | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          }
+          Set-Content -LiteralPath 'outputs\SHA256SUMS.txt' -Value $sums -Encoding utf8
+          $sums | Write-Host
+
+      - name: 生成发布说明
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setupName = "RustShot-Setup-$env:VERSION.exe"
+          $zipName = "RustShot-$env:VERSION-portable.zip"
+          $setupMd = '{0:N2} MB' -f ((Get-Item -LiteralPath (Join-Path 'outputs' $setupName)).Length / 1MB)
+          $exeMd = '{0:N2} MB' -f ((Get-Item -LiteralPath 'outputs\rust_shot.exe').Length / 1MB)
+
+          # 上一个标签到本次标签之间的提交；仓库还没有更早的标签时退回最近 40 条。
+          git describe --tags --abbrev=0 HEAD^ 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            $prev = (git describe --tags --abbrev=0 HEAD^)
+            $logTitle = "自 $prev 起的变更"
+            $log = (git log "$prev..HEAD" --no-merges --pretty=format:'- %s (`%h`)' -n 40) -join "`n"
+          } else {
+            $logTitle = '主要提交'
+            $log = (git log HEAD --no-merges --pretty=format:'- %s (`%h`)' -n 40) -join "`n"
+          }
+          if (-not $log) { $logTitle = '变更'; $log = '- 仅打包，无代码变更' }
+
+          $md = @(
+            "# RustShot $env:VERSION",
+            '',
+            'Windows 10 / 11 的截图与标注工具：单文件绿色版，或安装到 `C:\Program Files`；无运行库依赖，不联网。',
+            '',
+            '## 下载',
+            '',
+            '| 文件 | 说明 |',
+            '| --- | --- |',
+            ('| `{0}` | 安装版（{1}）：装到 `C:\Program Files\RustShot`，可选桌面图标 / 开机自启 / 加入 PATH |' -f $setupName, $setupMd),
+            ('| `{0}` | 便携版：解压即用，`config.txt` 跟着 exe 走 |' -f $zipName),
+            ('| `rust_shot.exe` | 只要主程序（{0}） |' -f $exeMd),
+            '| `SHA256SUMS.txt` | 上面各产物的 SHA-256 |',
+            '',
+            '## 安装',
+            '',
+            '安装版双击运行，需要一次 UAC 确认；卸载走「设置 → 应用」。无人值守安装：',
+            '',
+            '```powershell',
+            ('{0} /VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -f $setupName),
+            '```',
+            '',
+            '便携版解压后直接双击 `rust_shot.exe`，首次启动会在同目录生成 `config.txt`。',
+            '',
+            '## 快捷键',
+            '',
+            '| 热键 | 动作 |',
+            '| --- | --- |',
+            '| `F1` | 区域截图（`Ctrl+Alt+S` 备用） |',
+            '| `F2` | 全屏截图到剪贴板 |',
+            '| `Ctrl+Alt+Q` | 退出 |',
+            '',
+            '截图时：`1`–`7` 切工具、`Ctrl+Z` 撤销、`Enter` / `Ctrl+C` 复制、`Ctrl+S` 保存、`Esc` 取消。',
+            '',
+            "## $logTitle",
+            '',
+            $log
+          ) -join "`n"
+          Set-Content -LiteralPath 'release-notes.md' -Value $md -Encoding utf8
+          Write-Host $md
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: RustShot ${{ steps.version.outputs.version }}
+          body_path: release-notes.md
+          files: |
+            outputs/RustShot-Setup-${{ steps.version.outputs.version }}.exe
+            outputs/RustShot-${{ steps.version.outputs.version }}-portable.zip
+            outputs/rust_shot.exe
+            outputs/SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          # 带 -rc / -beta 的标签自动标记为预发布。
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          draft: false
+
+      - name: 写入任务摘要
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rows = Get-ChildItem -Path 'outputs\*.exe', 'outputs\*.zip' | Sort-Object Name | ForEach-Object {
+            '| `{0}` | {1:N2} MB |' -f $_.Name, ($_.Length / 1MB)
+          }
+          $summary = @(
+            "### RustShot $env:VERSION 已发布",
+            '',
+            '| 产物 | 大小 |',
+            '| --- | --- |'
+          ) + $rows
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($summary -join "`n") -Encoding utf8

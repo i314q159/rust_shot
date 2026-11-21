@@ -1,9 +1,9 @@
 # RustShot
 
 **7 MB 的 Windows 截图 / 标注工具：`F1` 冻结屏幕、拖选、加几笔、回车即复制。**
-单文件、无安装、无运行库依赖，配置跟着 exe 走。
+单文件绿色版，或用安装包装进 `C:\Program Files`；无运行库依赖，配置跟着 exe 走。
 
-> RustShot is a tiny screenshot & annotation tool for Windows. No installer, no runtime, no telemetry — one 7 MB exe you can drop on a USB stick.
+> RustShot is a tiny screenshot & annotation tool for Windows. No runtime, no telemetry — one 7 MB exe for a USB stick, or a Setup.exe that installs machine-wide.
 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/i314q159/rust_shot)
 [![Rust](https://img.shields.io/badge/rust-edition%202024-CE412B?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
@@ -13,11 +13,16 @@
 [![Offline](https://img.shields.io/badge/network-not%20required-success?style=flat-square)](#已知限制)
 
 <p align="center">
-  <img src="assets/screenshot-panel.png" width="300" alt="RustShot 主面板">
-  <img src="assets/screenshot-overlay.png" width="420" alt="框选与标注工具栏">
+  <img src="assets/screenshot-overlay.png" width="720" alt="框选后：暗化遮罩、尺寸提示与标注工具栏">
 </p>
 
-<p align="center"><sub>左：主面板（托盘常驻、保存目录、快捷键提示）　右：框选后的暗化遮罩与工具栏（尺寸提示、线宽、颜色、撤销 / 复制 / 保存）</sub></p>
+<p align="center"><sub>框选后：选区外的暗化遮罩、选区尺寸提示、工具栏（`1`–`7` 切工具 · 3 档线宽 · 6 色 · 撤销 / 复制 / 保存）</sub></p>
+
+<p align="center">
+  <img src="assets/screenshot-panel.png" width="300" alt="RustShot 主面板">
+</p>
+
+<p align="center"><sub>主面板：托盘常驻、保存目录、快捷键提示；整体浅色，压在原图上也不糊</sub></p>
 
 ---
 
@@ -25,6 +30,7 @@
 
 - [特性](#特性)
 - [工作流](#工作流)
+- [使用案例](#使用案例)
 - [快捷键](#快捷键)
 - [下载](#下载)
 - [命令行](#命令行)
@@ -85,6 +91,49 @@
 
 按下 `F1` 的瞬间屏幕已被冻结（GDI `BitBlt` + `CAPTUREBLT`）：背后的窗口继续滚动、视频继续播放，你圈到的仍是那一帧。
 
+## 使用案例
+
+四个最常见的用法，都是「按一个键 → 圈一下 → 回车」三步内结束。
+
+### 1. 提 issue 前，把报错指出来
+
+```
+F1 → 框选报错窗口 → 2 画红框圈住报错行 → 7 点一个序号 → Enter
+```
+
+圈完直接粘进 GitHub issue / Jira。上面那张演示图就是这条路：红框圈住正文、箭头指向右侧图表、序号 `1` 标出要讨论的位置。
+
+### 2. 截图里带着自己的判断
+
+```
+F1 → 框选 → 3 箭头从结论指向数据 → 5 在空白处写一句"这里对不上" → Enter
+```
+
+文字是就地编辑，直接敲中文（支持输入法）；`Ctrl+Z` 逐笔撤销，画歪了不用重来。
+
+### 3. 发给别人之前先打码
+
+```
+F1 → 框选 → 6 用马赛克笔刷涂掉姓名 / 手机号 / 内网地址 → Ctrl+S 另存
+```
+
+马赛克按局部平均色像素化，涂在导出的 PNG 里是真实像素，不是盖一层半透明色块。
+
+### 4. 给文档配一整套过程图
+
+```
+逐张截图 → Ctrl+S（同名自动 _1 / _2，不覆盖）→ 直接拖进 Word / 飞书文档
+```
+
+开启「复制到剪贴板时同时保存 PNG」后，`Enter` 一次就同时进剪贴板、落到保存目录，写文档时不用来回切换。
+
+| 场景 | 主要用到 | 产物 |
+| --- | --- | --- |
+| 报 bug / 提 issue | `F1` + 矩形 + 序号 | 剪贴板图片 |
+| 评审、批注、讲结论 | `F1` + 箭头 + 文字 | 剪贴板图片 |
+| 分享含隐私的界面 | `F1` + 马赛克 | PNG 文件 |
+| 写文档、做教程 | `F1` / `F2` + 自动保存 | PNG 序列 |
+
 ## 快捷键
 
 | 热键 | 动作 |
@@ -98,7 +147,26 @@
 
 ## 下载
 
-到 [Releases](https://github.com/i314q159/rust_shot/releases) 下载 `rust_shot.exe`，双击即用。
+两种用法，二选一。
+
+### 安装版（推荐）
+
+到 [Releases](https://github.com/i314q159/rust_shot/releases) 下载 `RustShot-Setup-<版本>.exe`，双击安装，需要一次 UAC 确认。
+
+| 项目 | 位置 |
+| --- | --- |
+| 程序 | `C:\Program Files\RustShot\`（所有用户可用） |
+| 开始菜单 | `RustShot`、`卸载 RustShot` |
+| 桌面图标 | 安装时勾选 |
+| 开机自启 | 安装时勾选，写 `HKLM\…\Run`，参数 `--tray`（静默常驻托盘，不弹面板） |
+| 命令行 | 安装时勾选，安装目录加入系统 `PATH`，任意目录可 `rust_shot` |
+| 卸载 | 设置 → 应用 → RustShot，或开始菜单「卸载 RustShot」 |
+
+安装包只写 `C:\Program Files\RustShot`，不会装到用户目录。卸载会清掉快捷方式、自启项和 PATH 条目（PATH 其它内容原样保留），截图文件与 `%LOCALAPPDATA%\RustShot` 里的设置不动。
+
+### 便携版
+
+下载 `rust_shot.exe`，双击即用：
 
 1. 首次启动会在 **exe 同目录**生成 `config.txt`（便携配置）；
 2. 放在 `Program Files` 等只读目录时，配置自动回退到 `%LOCALAPPDATA%\RustShot\`；
@@ -112,6 +180,7 @@
 rust_shot.exe                 启动主面板
 rust_shot.exe --capture, -c   立即区域截图（已有实例则转发给它）
 rust_shot.exe --full, -f      立即全屏截图到剪贴板
+rust_shot.exe --tray, --silent  启动后常驻托盘，不弹面板（开机自启用）
 rust_shot.exe --selftest a.png  离屏渲染一张测试图并退出（校核导出管线）
 rust_shot.exe --help, -h      用法说明
 ```
@@ -145,6 +214,25 @@ cargo build --release
 ```
 
 需要 MSVC 工具链（`rustup default stable-msvc`）。构建时 `build.rs` 会把 `assets/icon/rustshot.ico` 写进 exe 资源；机器上没有 `rc.exe` 只告警、不中断。
+
+### 打安装包
+
+```powershell
+winget install JRSoftware.InnoSetup      # 只需一次
+pwsh -File installer\build.ps1           # cargo build --release + 复制 exe + 编译安装包
+# 产物：outputs\RustShot-Setup-<版本>.exe，同时刷新 outputs\rust_shot.exe
+```
+
+安装脚本是 `installer\rust_shot.iss`（Inno Setup 6），版本号从 `Cargo.toml` 读取，不手写第二份。安装包固定装到 `C:\Program Files\RustShot`，界面为中文四页：欢迎 → 附加设置 → 安装 → 完成。
+
+无人值守安装/卸载（例如分发脚本）：
+
+```powershell
+RustShot-Setup-0.1.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+"C:\Program Files\RustShot\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+```
+
+两者都需要管理员权限；安装包不接受 `/CURRENTUSER`，不会写到 `%LOCALAPPDATA%`。
 
 ### 测试
 
@@ -188,7 +276,11 @@ rust_shot/
 │  ├─ icon/        图标源文件（ICO + 16–256 各尺寸 PNG + 预览）
 │  ├─ screenshot-panel.png
 │  └─ screenshot-overlay.png
+├─ installer/
+│  ├─ rust_shot.iss   Inno Setup 6 安装脚本（Program Files、快捷方式、PATH、自启、卸载）
+│  └─ build.ps1       一键构建安装包
 ├─ build.rs        把 ICO 写入 exe 资源
+├─ v.txt           最近一次构建的版本号（由 build.ps1 写入，来源是 Cargo.toml）
 ├─ LICENSE-MIT.md
 └─ README.md
 ```
