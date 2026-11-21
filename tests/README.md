@@ -9,8 +9,11 @@ tests/
 ├── checks.py         逐场景手工校验，需要人眼看截图
 ├── requirements.txt  pillow、pywinauto
 ├── app/app.py        src/app
+├── app/files.py          src/app/files.rs
 ├── capture/capture.py    src/capture
+├── capture/overlay.py    src/capture/overlay
 ├── config/config.py      src/config
+├── config/i18n.py        src/config/i18n
 ├── platform/platform.py  src/platform
 ├── theme/theme.py        src/theme
 ├── update/update.py      src/update
@@ -50,8 +53,11 @@ python -m venv .venv
 | 脚本 | 覆盖 |
 | --- | --- |
 | `app/app.py` | `--tray` 不弹窗、`--panel` 转发给运行中实例、关窗后隐藏到托盘 |
+| `app/files.py` | `auto_save = false` 时只进剪贴板不落盘、`auto_save = true` 时落盘 |
 | `capture/capture.py` | 区域截图 500×400 + 剪贴板、全屏截图、Esc 不落盘、标注后像素变化 |
+| `capture/overlay.py` | Ctrl+Z 撤销、箭头 / 画笔 / 序号、马赛克、文字框打开与 Esc 丢弃 |
 | `config/config.py` | `config.toml` 的 save_dir 生效、首次运行自动生成配置、旧 `config.txt` 不再迁移 |
+| `config/i18n.py` | `--help` 弹窗随 `lang` 切中英文 |
 | `platform/platform.py` | 日志写在 `%LOCALAPPDATA%\RustShot`、单实例互斥 |
 | `theme/theme.py` | dark / light / system 三种偏好启动后的主题日志 |
 | `update/update.py` | 非安装副本调用 `--apply-update` 时跳过安装（不打 UAC）、可选联网检查 |
@@ -61,8 +67,11 @@ python -m venv .venv
 
 ```powershell
 python tests\app\app.py
+python tests\app\files.py
 python tests\capture\capture.py
+python tests\capture\overlay.py
 python tests\config\config.py
+python tests\config\i18n.py
 python tests\platform\platform.py
 python tests\theme\theme.py
 python tests\update\update.py

@@ -30,8 +30,42 @@ VK = {
 }
 
 
+KEYEVENTF_UNICODE = 0x0004
+INPUT_KEYBOARD = 1
+
+
 class POINT(ctypes.Structure):
     _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", wintypes.WORD),
+        ("wScan", wintypes.WORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", wintypes.LPVOID),
+    ]
+
+
+class INPUT(ctypes.Structure):
+    _fields_ = [
+        ("type", wintypes.DWORD),
+        ("ki", KEYBDINPUT),
+        ("pad", ctypes.c_byte * 8),
+    ]
+
+
+def text(value: str) -> None:
+    for char in value:
+        for flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYUP):
+            event = INPUT(
+                type=INPUT_KEYBOARD,
+                ki=KEYBDINPUT(0, ord(char), flags, 0, None),
+            )
+            user32.SendInput(1, ctypes.byref(event), ctypes.sizeof(INPUT))
+            time.sleep(0.02)
+        time.sleep(0.02)
 
 
 def move(x: int, y: int) -> None:
