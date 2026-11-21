@@ -40,7 +40,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"$').Matches[0].Groups[1].Value
+          # 版本号唯一来源是 Cargo.toml 的 [package] 段；不读取任何留档文件。
+          $manifest = Get-Content -LiteralPath Cargo.toml -Raw
+          $package = [regex]::Match($manifest, '(?ms)^\[package\]\s*(?<body>.*?)(?=^\[|\z)')
+          if (-not $package.Success) { throw 'Cargo.toml 缺少 [package] 段' }
+          $match = [regex]::Match($package.Groups['body'].Value, '(?m)^version\s*=\s*"(.+)"\s*$')
+          if (-not $match.Success) { throw 'Cargo.toml 的 [package] 段缺少 version' }
+          $version = $match.Groups[1].Value
           $tag = $env:GITHUB_REF_NAME
           if ($tag -ne "v$version") {
             Write-Host "::error::标签 $tag 与 Cargo.toml 的 version = `"$version`" 不一致。先把 Cargo.toml 改成 $($tag.TrimStart('v')) 并提交，再重新打标签。"
