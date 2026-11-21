@@ -15,10 +15,10 @@
 [![Offline](https://img.shields.io/badge/network-not%20required-success?style=flat-square)](#已知限制)
 
 <p align="center">
-  <img src="assets/screenshot-overlay.png" width="720" alt="框选后：暗化遮罩、尺寸提示与标注工具栏">
+  <img src="assets/demo.gif" width="900" alt="演示：F1 冻结屏幕、拖选、红框 + 箭头 + 序号，回车复制">
 </p>
 
-<p align="center"><sub>框选后：选区外的暗化遮罩、选区尺寸提示、工具栏（`1`–`7` 切工具 · 3 档线宽 · 6 色 · 撤销 / 复制 / 保存）</sub></p>
+<p align="center"><sub>`F1` 冻结屏幕 → 拖选 → `2` 框选 `3` 箭头 `7` 序号 → `Enter` 复制（约 5 秒，无音轨）</sub></p>
 
 <p align="center">
   <img src="assets/screenshot-panel.png" width="300" alt="RustShot 主面板">
@@ -62,6 +62,12 @@
 | `7` | 序号 | 自动递增的圆形编号 |
 
 3 档线宽、6 种颜色、`Ctrl+Z` 逐笔撤销。
+
+<p align="center">
+  <img src="assets/screenshot-overlay.png" width="720" alt="框选后：暗化遮罩、尺寸提示与标注工具栏">
+</p>
+
+<p align="center"><sub>框选后：选区外的暗化遮罩、选区尺寸提示、工具栏（`1`–`7` 切工具 · 3 档线宽 · 6 色 · 撤销 / 复制 / 保存）</sub></p>
 
 **输出** — `Enter` / `Ctrl+C` 复制到剪贴板（可选同时存 PNG）；`Ctrl+S` 另存为，同名文件自动追加 `_1` / `_2` 不覆盖；`Esc` / 右键取消。
 
@@ -109,7 +115,7 @@
 F1 → 框选报错窗口 → 2 画红框圈住报错行 → 7 点一个序号 → Enter
 ```
 
-圈完直接粘进 GitHub issue / Jira。上面那张演示图就是这条路：红框圈住正文、箭头指向右侧图表、序号 `1` 标出要讨论的位置。
+圈完直接粘进 GitHub issue / Jira。顶部那张演示图就是这条路：红框圈住算错的合计、箭头指过去、序号 `1` 标出要讨论的位置。
 
 ### 2. 截图里带着自己的判断
 

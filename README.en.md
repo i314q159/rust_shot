@@ -13,10 +13,10 @@ One portable exe, or a Setup.exe that installs machine-wide into `C:\Program Fil
 [![Offline](https://img.shields.io/badge/network-not%20required-success?style=flat-square)](#limitations--faq)
 
 <p align="center">
-  <img src="assets/screenshot-overlay.png" width="720" alt="After dragging: dimmed mask, size tag and the annotation toolbar">
+  <img src="assets/demo.gif" width="900" alt="Demo: freeze with F1, drag a region, box + arrow + number, Enter to copy">
 </p>
 
-<p align="center"><sub>After dragging: dimmed mask outside the selection, live size tag, toolbar (`1`–`7` switch tools · 3 widths · 6 colours · undo / copy / save)</sub></p>
+<p align="center"><sub>`F1` freezes the screen → drag a region → `2` box `3` arrow `7` number → `Enter` to copy (5 seconds, no audio)</sub></p>
 
 <p align="center">
   <img src="assets/screenshot-panel.png" width="300" alt="RustShot control panel">
@@ -60,6 +60,12 @@ One portable exe, or a Setup.exe that installs machine-wide into `C:\Program Fil
 | `7` | Number | auto-incrementing badge |
 
 3 line widths, 6 colours, `Ctrl+Z` undoes stroke by stroke.
+
+<p align="center">
+  <img src="assets/screenshot-overlay.png" width="720" alt="After dragging: dimmed mask, size tag and the annotation toolbar">
+</p>
+
+<p align="center"><sub>After dragging: dimmed mask outside the selection, live size tag, toolbar (`1`–`7` switch tools · 3 widths · 6 colours · undo / copy / save)</sub></p>
 
 **Output** — `Enter` / `Ctrl+C` copy to the clipboard (optionally also saving a PNG); `Ctrl+S` saves as, appending `_1` / `_2` instead of overwriting; `Esc` or right-click cancels.
 
@@ -108,7 +114,7 @@ The four everyday paths, each finished in "press a key → drag → Enter".
 F1 → drag around the error window → 2 box the failing line → 7 add a number → Enter
 ```
 
-Paste it straight into GitHub or Jira. The demo image above walks this path: a red box around the text, an arrow to the chart, a `1` badge on the spot under discussion.
+Paste it straight into GitHub or Jira. The demo at the top walks this path: a red box around the wrong total, an arrow pointing at it, a `1` badge on the spot under discussion.
 
 ### 2. Put your own verdict on the screenshot
 
