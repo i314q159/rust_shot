@@ -132,6 +132,8 @@ fn is_bright(c: egui::Color32) -> bool {
     0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32 > 150.0
 }
 
+const MOSAIC_CELL: f32 = 9.0;
+
 fn hit_handle(sel: egui::Rect, p: egui::Pos2, tol: f32) -> Option<usize> {
     let c = sel.center();
     let pts = [
@@ -431,7 +433,7 @@ impl Session {
                 egui::CursorIcon::Default
             } else if let Some(sel) = self.sel {
                 let p = to_phys(p);
-                match hit_handle(sel, p, 11.0) {
+                match hit_handle(sel, p, 11.0 * rx.max(ry)) {
                     Some(0) | Some(4) => egui::CursorIcon::ResizeNwSe,
                     Some(2) | Some(6) => egui::CursorIcon::ResizeNeSw,
                     Some(1) | Some(5) => egui::CursorIcon::ResizeVertical,
@@ -484,7 +486,8 @@ impl Session {
             self.commit_text();
         }
         if let Some(sel) = self.sel {
-            if let Some(h) = hit_handle(sel, p, 11.0) {
+            let tol = 11.0 * self.rx.max(self.ry);
+            if let Some(h) = hit_handle(sel, p, tol) {
                 self.drag = Drag::Resize {
                     handle: h,
                     sel0: sel,
@@ -605,8 +608,11 @@ impl Session {
     fn on_release(&mut self) {
         match self.drag {
             Drag::Select => {
-                let tiny = self.sel.is_none_or(|s| s.width() < 8.0 || s.height() < 8.0);
-                if tiny {
+                let tol = 3.0 * self.rx.max(self.ry);
+                let clicked = self
+                    .sel
+                    .is_none_or(|s| s.width() <= tol && s.height() <= tol);
+                if clicked {
                     self.sel = Some(self.hover.unwrap_or_else(|| self.bounds()));
                 }
             }
@@ -637,7 +643,7 @@ impl Session {
                 w: self.width,
             },
             Tool::Mosaic => Shape::Mosaic {
-                cell: 9.0,
+                cell: MOSAIC_CELL,
                 blocks: Vec::new(),
             },
             _ => return,
@@ -674,16 +680,16 @@ impl Session {
 
     fn mosaic_last(&self) -> Option<Px> {
         match self.shapes.last() {
-            Some(Shape::Mosaic { blocks, .. }) => {
-                blocks.last().map(|(x, y, _)| (*x + 4.5, *y + 4.5))
-            }
+            Some(Shape::Mosaic { blocks, .. }) => blocks
+                .last()
+                .map(|(x, y, _)| (*x + MOSAIC_CELL * 0.5, *y + MOSAIC_CELL * 0.5)),
             _ => None,
         }
     }
 
     fn stamp_mosaic(&mut self, from: Px, to: Px) {
         let radius = 15.0f32;
-        let cell = 9.0f32;
+        let cell = MOSAIC_CELL;
         let frame = self.frame.clone();
         let dx = to.0 - from.0;
         let dy = to.1 - from.1;
@@ -791,13 +797,40 @@ impl Session {
     }
 
     fn commit_text(&mut self) {
-        if let Some(idx) = self.text_idx.take() {
-            let empty = matches!(self.shapes.get(idx), Some(Shape::Text { text, .. }) if text.trim().is_empty());
-            if (empty || idx >= self.shapes.len()) && idx < self.shapes.len() {
-                self.shapes.remove(idx);
-            }
-        }
+        let Some(idx) = self.text_idx.take() else {
+            return;
+        };
         self.text_focus_done = false;
+        let Some(Shape::Text { text, .. }) = self.shapes.get_mut(idx) else {
+            return;
+        };
+        while text.ends_with('\n') || text.ends_with('\r') {
+            text.pop();
+        }
+        if text.trim().is_empty() {
+            self.shapes.remove(idx);
+        }
+    }
+
+    fn cancel_text(&mut self) {
+        let Some(idx) = self.text_idx.take() else {
+            return;
+        };
+        self.text_focus_done = false;
+        if idx < self.shapes.len() {
+            self.shapes.remove(idx);
+        }
+    }
+
+    fn undo(&mut self) {
+        if self.text_idx.is_some() {
+            self.commit_text();
+        }
+        self.shapes.pop();
+        if self.text_idx.is_some_and(|i| i >= self.shapes.len()) {
+            self.text_idx = None;
+            self.text_focus_done = false;
+        }
     }
 
     fn show_text_editor(&mut self, ctx: &egui::Context, rx: f32, ry: f32) -> Vec<egui::Rect> {
@@ -986,7 +1019,7 @@ impl Session {
             });
 
         if undo {
-            self.shapes.pop();
+            self.undo();
         }
         if let Some(a) = export {
             self.export(a);
@@ -1001,16 +1034,22 @@ impl Session {
     }
 
     fn keys(&mut self, ctx: &egui::Context) {
-        let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-        if esc {
-            if self.text_idx.is_some() {
+        let (esc, enter) = ctx.input(|i| {
+            (
+                i.key_pressed(egui::Key::Escape),
+                i.key_pressed(egui::Key::Enter) && !i.modifiers.shift,
+            )
+        });
+        if self.text_idx.is_some() {
+            if esc {
+                self.cancel_text();
+            } else if enter {
                 self.commit_text();
-            } else {
-                self.cancelled = true;
             }
             return;
         }
-        if self.text_idx.is_some() {
+        if esc {
+            self.cancelled = true;
             return;
         }
 
@@ -1037,7 +1076,7 @@ impl Session {
         let cmd = ctx.input(|i| i.modifiers.command);
         if cmd {
             if ctx.input(|i| i.key_pressed(egui::Key::Z)) {
-                self.shapes.pop();
+                self.undo();
             }
             if ctx.input(|i| i.key_pressed(egui::Key::S)) {
                 self.export(Export::Save);
@@ -1092,6 +1131,59 @@ mod tests {
         let c = clamp_rect_to(r, bounds);
         assert!(c.max.x <= 100.0 && c.max.y <= 80.0, "{c:?}");
         assert_eq!(c.size(), egui::vec2(50.0, 50.0));
+    }
+
+    fn session(tool: Tool) -> Session {
+        let frame = Frame {
+            w: 200,
+            h: 120,
+            rgba: vec![0; 200 * 120 * 4],
+            origin: PhysRect::new(0, 0, 200, 120),
+        };
+        Session::new(
+            Arc::new(frame),
+            PhysRect::new(0, 0, 200, 120),
+            "test".to_owned(),
+            tool,
+            None,
+            false,
+        )
+    }
+
+    #[test]
+    fn undo_while_typing_drops_the_text_and_clears_the_editor() {
+        let mut s = session(Tool::Text);
+        s.start_text((10.0, 10.0));
+        assert!(s.text_idx.is_some());
+        s.undo();
+        assert!(s.text_idx.is_none());
+        assert!(s.shapes.is_empty());
+    }
+
+    #[test]
+    fn undo_keeps_the_editor_usable_after_removing_the_text() {
+        let mut s = session(Tool::Text);
+        s.start_text((10.0, 10.0));
+        if let Some(Shape::Text { text, .. }) = s.shapes.last_mut() {
+            text.push_str("hi\n");
+        }
+        s.commit_text();
+        assert_eq!(s.shapes.len(), 1);
+        if let Some(Shape::Text { text, .. }) = s.shapes.last() {
+            assert_eq!(text, "hi");
+        }
+        s.undo();
+        assert!(s.shapes.is_empty());
+        assert!(s.text_idx.is_none());
+    }
+
+    #[test]
+    fn cancel_text_discards_an_empty_editor() {
+        let mut s = session(Tool::Text);
+        s.start_text((10.0, 10.0));
+        s.cancel_text();
+        assert!(s.shapes.is_empty());
+        assert!(s.text_idx.is_none());
     }
 
     #[test]
