@@ -330,6 +330,8 @@ rust_shot/
 
 **Want a different annotation?** Open an issue and describe the scenario — that is more useful than silence.
 
+**Credits**: the tool stands on the Rust ecosystem, GitHub (hosting and CI), VS Code and CodeBuddy (development environment), and QwenWork and DeepSeek (AI assistance) — see [ACKNOWLEDGEMENTS.en.md](ACKNOWLEDGEMENTS.en.md).
+
 ## License
 
 [MIT](LICENSE-MIT.md) © 2026 i314q159 — also viewable in the app: `Help → License (MIT)`.

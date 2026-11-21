@@ -329,6 +329,8 @@ rust_shot/
 
 **想要另一种标注方式？** 开个 Issue 说说场景，比沉默更有用。
 
+**致谢**：这个工具站在 Rust 生态、GitHub（代码托管与自动构建）、VS Code 与 CodeBuddy（开发环境）、QwenWork 与 DeepSeek（AI 协助）之上，详见 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。
+
 ## 许可证
 
 [MIT](LICENSE-MIT.md) © 2026 i314q159 —— 软件内也可直接查看：`帮助 → 开源声明（MIT）`。
