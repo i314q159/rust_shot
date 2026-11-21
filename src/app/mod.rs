@@ -121,6 +121,10 @@ pub struct App {
     pub(crate) install: Install,
 
     pub(crate) install_rx: Option<std::sync::mpsc::Receiver<InstallEvent>>,
+
+    pub(crate) copy_rx: Option<std::sync::mpsc::Receiver<String>>,
+
+    pub(crate) reveal_on_update: bool,
 }
 
 impl App {
@@ -130,7 +134,7 @@ impl App {
         let cfg = crate::config::Config::load();
 
         if !crate::config::exists() {
-            cfg.save();
+            let _ = cfg.save();
         }
         crate::config::i18n::set(crate::config::i18n::resolve(cfg.lang));
         let dark = crate::theme::resolve(cfg.theme);
@@ -236,6 +240,8 @@ impl App {
             show_update: false,
             install: Install::Idle,
             install_rx: None,
+            copy_rx: None,
+            reveal_on_update: false,
         }
     }
 
@@ -546,6 +552,19 @@ impl App {
         }
     }
 
+    fn poll_copy(&mut self) {
+        let Some(rx) = self.copy_rx.take() else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(msg) => self.status = msg,
+            Err(std::sync::mpsc::TryRecvError::Empty) => self.copy_rx = Some(rx),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.status = tr(strings::THE_COPY_THREAD_EXITED_UNEXPECTEDLY).to_owned();
+            }
+        }
+    }
+
     fn poll_save(&mut self) {
         let Some(rx) = self.save_rx.take() else {
             return;
@@ -575,7 +594,10 @@ impl App {
                 WorkerEvent::CaptureFull => self.capture_full(),
                 WorkerEvent::CaptureFullOverlay => self.begin_capture(ctx, Tool::Select, true),
                 WorkerEvent::ShowPanel => self.show_panel(ctx),
-                WorkerEvent::CheckUpdate => self.check_update(),
+                WorkerEvent::CheckUpdate => {
+                    self.reveal_on_update = true;
+                    self.check_update();
+                }
                 WorkerEvent::ThemeChanged => self.refresh_theme(ctx),
                 WorkerEvent::Quit => {
                     self.quitting = true;
@@ -700,18 +722,31 @@ impl App {
     }
 
     pub(crate) fn capture_full(&mut self) {
-        let monitor = capture::monitor_at_cursor();
-        match capture::capture(monitor) {
-            Some(frame) => {
-                let rect = PhysRect::new(0, 0, frame.w as i32, frame.h as i32);
-                let img = crate::capture::shapes::render(&frame, rect, &[]);
-                self.deliver(Outcome {
-                    action: Export::Copy,
-                    image: img,
-                });
-            }
-            None => self.status = tr(strings::CAPTURE_FAILED_CANNOT_READ_THE_SCREEN).to_owned(),
+        if self.copy_rx.is_some() {
+            self.status = tr(strings::COPYING_THE_IMAGE).to_owned();
+            return;
         }
+        let monitor = capture::monitor_at_cursor();
+        let dir = self.save_dir.clone();
+        let auto_save = self.auto_save;
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.copy_rx = Some(rx);
+        self.status = tr(strings::COPYING_THE_IMAGE).to_owned();
+        std::thread::Builder::new()
+            .name("rustshot-capture".into())
+            .spawn(move || {
+                let msg = match capture::capture(monitor) {
+                    Some(frame) => {
+                        let rect = PhysRect::new(0, 0, frame.w as i32, frame.h as i32);
+                        let img = crate::capture::shapes::render(&frame, rect, &[]);
+                        copy_and_save(&img, &dir, auto_save)
+                    }
+                    None => tr(strings::CAPTURE_FAILED_CANNOT_READ_THE_SCREEN).to_owned(),
+                };
+                let _ = tx.send(msg);
+                crate::app::request_repaint();
+            })
+            .ok();
     }
 
     fn run_overlay(&mut self, ctx: &egui::Context) {
@@ -783,17 +818,23 @@ impl App {
         let img = outcome.image;
         match outcome.action {
             Export::Copy => {
-                let mut msg = match copy_to_clipboard(&img) {
-                    Ok(()) => tr(strings::COPIED_TO_CLIPBOARD).to_owned(),
-                    Err(e) => tr1(strings::COPY_FAILED, e),
-                };
-                if self.auto_save {
-                    match self.save_auto(&img) {
-                        Ok(p) => msg.push_str(&tr1(strings::SAVED, p.display())),
-                        Err(e) => msg.push_str(&tr1(strings::AUTO_SAVE_FAILED, e)),
-                    }
+                if self.copy_rx.is_some() {
+                    self.status = tr(strings::COPYING_THE_IMAGE).to_owned();
+                    return;
                 }
-                self.status = msg;
+                let dir = self.save_dir.clone();
+                let auto_save = self.auto_save;
+                let (tx, rx) = std::sync::mpsc::channel();
+                self.copy_rx = Some(rx);
+                self.status = tr(strings::COPYING_THE_IMAGE).to_owned();
+                std::thread::Builder::new()
+                    .name("rustshot-copy".into())
+                    .spawn(move || {
+                        let msg = copy_and_save(&img, &dir, auto_save);
+                        let _ = tx.send(msg);
+                        crate::app::request_repaint();
+                    })
+                    .ok();
             }
             Export::Save => {
                 if self.save_rx.is_some() {
@@ -845,14 +886,28 @@ impl App {
         }
         .save();
     }
+}
 
-    fn save_auto(&self, img: &image::RgbaImage) -> Result<PathBuf, String> {
-        std::fs::create_dir_all(&self.save_dir).map_err(|e| e.to_string())?;
-        let stem = format!("RustShot_{}", crate::platform::util::timestamp());
-        let path = crate::config::unique_png(&self.save_dir, &stem);
-        save_png(img, &path)?;
-        Ok(path)
+fn copy_and_save(img: &image::RgbaImage, dir: &std::path::Path, auto_save: bool) -> String {
+    let mut msg = match copy_to_clipboard(img) {
+        Ok(()) => tr(strings::COPIED_TO_CLIPBOARD).to_owned(),
+        Err(e) => tr1(strings::COPY_FAILED, e),
+    };
+    if auto_save {
+        match save_auto_to(dir, img) {
+            Ok(p) => msg.push_str(&tr1(strings::SAVED, p.display())),
+            Err(e) => msg.push_str(&tr1(strings::AUTO_SAVE_FAILED, e)),
+        }
     }
+    msg
+}
+
+fn save_auto_to(dir: &std::path::Path, img: &image::RgbaImage) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let stem = format!("RustShot_{}", crate::platform::util::timestamp());
+    let path = crate::config::unique_png(dir, &stem);
+    save_png(img, &path)?;
+    Ok(path)
 }
 
 fn copy_to_clipboard(img: &image::RgbaImage) -> Result<(), String> {
@@ -888,8 +943,15 @@ impl eframe::App for App {
             crate::platform::util::log("panel close -> hidden to tray");
         }
         self.poll_save();
+        self.poll_copy();
         self.poll_dir();
         self.poll_update();
+        if self.reveal_on_update
+            && !matches!(self.update, UpdateStatus::Idle | UpdateStatus::Checking)
+        {
+            self.reveal_on_update = false;
+            self.show_panel(ctx);
+        }
         self.poll_install(ctx);
         self.pump_worker(ctx);
         self.pump_tray(ctx);
@@ -909,6 +971,7 @@ impl eframe::App for App {
                 }
                 Start::Check => {
                     self.hide_to_tray(ctx);
+                    self.reveal_on_update = true;
                     crate::platform::util::log("started to check for updates");
                     self.check_update();
                 }

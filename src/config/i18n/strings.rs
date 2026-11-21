@@ -32,6 +32,14 @@ pub const SAVED: Text = Text {
     zh: "，已保存 {}",
     en: ", saved {}",
 };
+pub const COPYING_THE_IMAGE: Text = Text {
+    zh: "正在复制…",
+    en: "Copying…",
+};
+pub const THE_COPY_THREAD_EXITED_UNEXPECTEDLY: Text = Text {
+    zh: "复制失败：后台线程意外退出",
+    en: "Copy failed: the background thread exited unexpectedly",
+};
 pub const COPY_FAILED: Text = Text {
     zh: "复制失败：{}",
     en: "Copy failed: {}",
