@@ -1,4 +1,4 @@
-﻿//! eframe application: control panel, overlay orchestration, clipboard / file plumbing.
+//! eframe application: control panel, overlay orchestration, clipboard / file plumbing.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -71,6 +71,8 @@ pub struct App {
     serial: u64,
     /// Put the panel back into the tray once the capture is finished.
     remiminimize: bool,
+    /// Where the panel lives while it is parked off screen (hidden to the tray).
+    panel_park: Option<crate::win::Parked>,
     /// RequestPaintWhileHidden only needs to be sent once per capture.
     paint_hidden_sent: bool,
     /// Set while the save dialog runs on its own thread.
@@ -141,6 +143,7 @@ impl App {
             restore_frames: 0,
             serial: 0,
             remiminimize: false,
+            panel_park: None,
             paint_hidden_sent: false,
             save_rx: None,
             dir_rx: None,
@@ -215,17 +218,41 @@ impl App {
             match ev {
                 WorkerEvent::CaptureRegion => self.begin_capture(ctx, Tool::Select),
                 WorkerEvent::CaptureFull => self.capture_full(),
-                WorkerEvent::ShowPanel => {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                }
+                WorkerEvent::ShowPanel => self.show_panel(ctx),
                 WorkerEvent::Quit => {
                     self.quitting = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             }
         }
+    }
+
+    /// Hide the panel to the tray. The window is *not* minimized: it is parked
+    /// outside every monitor, so eframe can still host the overlay viewport and
+    /// a capture started from the tray never has to bring the panel back
+    /// (which used to flash it on screen and steal focus).
+    fn hide_to_tray(&mut self, ctx: &egui::Context) {
+        if self.panel_park.is_some() {
+            return;
+        }
+        match crate::win::park_offscreen(PANEL_TITLE) {
+            Some(parked) => {
+                self.panel_park = Some(parked);
+                crate::util::log(&format!("panel parked off screen at {:?}", parked.rect));
+                ctx.request_repaint();
+            }
+            // No usable window: fall back to a plain minimize.
+            None => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
+        }
+    }
+
+    fn show_panel(&mut self, ctx: &egui::Context) {
+        if let Some(parked) = self.panel_park.take() {
+            crate::win::unpark(PANEL_TITLE, parked);
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
     }
 
     fn pump_tray(&mut self, ctx: &egui::Context) {
@@ -266,11 +293,7 @@ impl App {
         match action {
             Some(0) => self.begin_capture(ctx, Tool::Select),
             Some(1) => self.capture_full(),
-            Some(2) => {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-            }
+            Some(2) => self.show_panel(ctx),
             Some(3) => {
                 self.quitting = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -297,14 +320,21 @@ impl App {
                     hover,
                 ));
                 self.status.clear();
-                // eframe cannot create child viewports from a hidden window, so a
-                // capture started from the tray restores the panel for one frame.
+                // eframe cannot create child viewports from a hidden or
+                // minimized window, so the panel has to be mapped before the
+                // overlay appears. When it is parked off screen that already
+                // holds and nothing visible happens; only a panel the user
+                // minimized by hand has to be restored for a frame.
                 if !crate::win::is_ready(PANEL_TITLE) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                    if self.panel_park.is_some() {
+                        crate::win::show_without_activation(PANEL_TITLE);
+                    } else {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                        self.remiminimize = true;
+                    }
                     self.waiting_panel = true;
                     self.restore_frames = 2;
-                    self.remiminimize = true;
                 }
             }
             None => self.status = "截屏失败：无法读取屏幕内容".to_owned(),
@@ -495,8 +525,8 @@ impl App {
                         }
                         ui.separator();
                         if ui.button("隐藏到托盘").clicked() {
-                            ui.ctx()
-                                .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                            let ctx = ui.ctx().clone();
+                            self.hide_to_tray(&ctx);
                             ui.close();
                         }
                         if ui.button("退出").clicked() {
@@ -698,7 +728,8 @@ impl App {
                                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                             }
                             if ui.button("隐藏到托盘").clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                                let ctx = ui.ctx().clone();
+                                self.hide_to_tray(&ctx);
                             }
                         });
                     });
@@ -793,21 +824,26 @@ impl eframe::App for App {
         // Closing the panel window goes to the tray instead of quitting.
         if ctx.input(|i| i.viewport().close_requested()) && !self.quitting {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-            self.status = "已最小化到托盘：双击托盘图标截图，右键菜单可退出".to_owned();
-            crate::util::log("panel close -> minimized to tray");
+            self.hide_to_tray(ctx);
+            self.status = "已隐藏到托盘：F1 截图 · 右键托盘图标可退出".to_owned();
+            crate::util::log("panel close -> hidden to tray");
         }
         self.poll_save();
         self.poll_dir();
         self.pump_worker(ctx);
         self.pump_tray(ctx);
+        if self.panel_park.is_some() {
+            // eframe re-applies winit's window styles on the first frames, which
+            // would put the parked panel back into the taskbar.
+            crate::win::hide_from_taskbar(PANEL_TITLE);
+        }
         if let Some(start) = self.start.take() {
             match start {
                 Start::Panel => {}
                 Start::Region => self.begin_capture(ctx, Tool::Select),
                 Start::Full => self.capture_full(),
                 Start::Tray => {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                    self.hide_to_tray(ctx);
                     self.status = "已在托盘常驻：F1 截图 · F2 全屏".to_owned();
                     crate::util::log("started in tray");
                 }

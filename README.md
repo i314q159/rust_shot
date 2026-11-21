@@ -63,7 +63,7 @@
 
 **输出** — `Enter` / `Ctrl+C` 复制到剪贴板（可选同时存 PNG）；`Ctrl+S` 另存为，同名文件自动追加 `_1` / `_2` 不覆盖；`Esc` / 右键取消。
 
-**常驻** — 点 × 默认最小化到托盘；托盘左键直接截图，右键菜单切换区域 / 全屏 / 主面板 / 退出；单实例，重复启动会把请求转给已运行的实例。
+**常驻** — 点 × 默认隐藏到托盘（窗口移到屏幕外并退出任务栏，不会残留在 Alt+Tab 里）；托盘左键直接截图，右键菜单切换区域 / 全屏 / 主面板 / 退出；单实例，重复启动会把请求转给已运行的实例。
 
 **为什么不用 Snipaste / 系统截图**
 
@@ -228,7 +228,7 @@ pwsh -File installer\build.ps1           # cargo build --release + 复制 exe + 
 无人值守安装/卸载（例如分发脚本）：
 
 ```powershell
-RustShot-Setup-0.1.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+RustShot-Setup-0.1.1.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 "C:\Program Files\RustShot\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 ```
 
@@ -291,7 +291,7 @@ rust_shot/
 
 **截图是黑的？** 抓取受保护内容（部分 DRM 播放器、受保护窗口）时系统返回黑帧，与工具无关。
 
-**从托盘唤起时面板闪一下？** 覆盖层借主面板窗口进入"非最小化"状态（eframe 限制），截图结束后自动退回托盘。
+**隐藏到托盘后按热键，面板会不会跳出来？** 不会。隐藏时主面板不是最小化，而是被移到所有屏幕之外并退出任务栏——eframe 仍能从它身上创建截图覆盖层，所以 F1 / F2 / 托盘截图都不会把面板显示出来，也不会抢走焦点。只有你自己在任务栏上手动最小化了面板时，才需要为覆盖层临时恢复它（截图结束自动退回）。
 
 **没做**：滚动长截图、取色器、OCR、贴图。
 
