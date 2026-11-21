@@ -74,20 +74,9 @@ jobs:
         shell: pwsh
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          RUSTSHOT_PFX_B64: ${{ secrets.RUSTSHOT_PFX_B64 }}
-          RUSTSHOT_PFX_PASSWORD: ${{ secrets.RUSTSHOT_PFX_PASSWORD }}
         run: |
           $ErrorActionPreference = 'Stop'
-          # 可选：配了签名证书就还原成 pfx，交给 build.ps1 签名；没配就构建未签名版本。
-          if ($env:RUSTSHOT_PFX_B64) {
-            $pfx = Join-Path $env:RUNNER_TEMP 'rustshot-codesign.pfx'
-            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:RUSTSHOT_PFX_B64))
-            $env:RUSTSHOT_PFX = $pfx
-            Write-Host "已还原签名证书：$pfx"
-          } else {
-            Write-Host '未配置 RUSTSHOT_PFX_B64，本次发布不签名'
-          }
-          # 复用仓库里的构建脚本：cargo build --release → 签名 exe → outputs\rust_shot.exe → ISCC 编译安装包 → 签名安装包。
+          # 复用仓库里的构建脚本：cargo build --release → outputs\rust_shot.exe → ISCC 编译安装包。
           pwsh -NoProfile -File installer\build.ps1
           if ($LASTEXITCODE -ne 0) { throw "installer\build.ps1 失败（exit $LASTEXITCODE）" }
           foreach ($f in @('outputs\rust_shot.exe', "outputs\RustShot-Setup-$env:VERSION.exe")) {
@@ -103,10 +92,6 @@ jobs:
           $stage = Join-Path $env:RUNNER_TEMP "RustShot-$env:VERSION"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item -LiteralPath 'outputs\rust_shot.exe', 'README.md', 'LICENSE-MIT.md' -Destination $stage
-          # 签名构建才有证书，便携版也带上一份，用户可以自行导入。
-          if (Test-Path -LiteralPath 'outputs\rustshot-codesign.cer') {
-            Copy-Item -LiteralPath 'outputs\rustshot-codesign.cer' -Destination $stage
-          }
           $zip = "outputs\RustShot-$env:VERSION-portable.zip"
           # -Force 直接覆盖同名 zip，不需要先删文件。
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
@@ -195,13 +180,6 @@ jobs:
           # 带 -rc / -beta 的标签自动标记为预发布。
           prerelease: ${{ contains(github.ref_name, '-') }}
           draft: false
-
-      - name: 附带代码签名证书（仅签名构建）
-        if: ${{ hashFiles('outputs/rustshot-codesign.cer') != '' }}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: outputs/rustshot-codesign.cer
 
       - name: 写入任务摘要
         shell: pwsh

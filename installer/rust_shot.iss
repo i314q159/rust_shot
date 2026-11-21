@@ -18,12 +18,6 @@
 ; "{{" 是 Inno 的字面 "{" 转义，最终注册表键为 {B7E1C0F2-…}_is1。
 #define MyAppId "{{B7E1C0F2-6B4A-4E1D-9A3C-2F5D8C1A7E64}"
 
-; build.ps1 在启用代码签名时传入 /DSignCert=<cer 路径> 与 /DCertThumbprint=<指纹>；
-; 未签名的构建不传这两个参数，安装包里也就没有证书相关条目。
-#ifdef SignCert
-  #define HaveSignCert
-#endif
-
 [Setup]
 AppId={#MyAppId}
 AppName={#MyAppName}
@@ -64,18 +58,11 @@ AppMutex=RustShotSingleInstance
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加设置："
 Name: "startup"; Description: "登录 Windows 时自动启动（常驻托盘，不弹面板）"; GroupDescription: "附加设置："
 Name: "addtopath"; Description: "把安装目录加入 PATH（命令行里可直接输入 rust_shot）"; GroupDescription: "附加设置："
-#ifdef HaveSignCert
-; 默认不勾选：把证书装进根证书库影响整机信任链，应由用户自己决定。
-Name: "trustcert"; Description: "把 RustShot 代码签名证书装入「受信任的根证书颁发机构」（发行者显示为 i314q159，卸载时自动移除）"; GroupDescription: "附加设置："; Flags: unchecked
-#endif
 
 [Files]
 Source: "..\target\release\rust_shot.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE-MIT.md"; DestDir: "{app}"; Flags: ignoreversion
-#ifdef HaveSignCert
-Source: "{#SignCert}"; DestDir: "{app}"; DestName: "rustshot-codesign.cer"; Flags: ignoreversion
-#endif
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "截图 / 标注 / 一键复制"
@@ -193,52 +180,14 @@ begin
   RegWriteExpandStringValue(EnvRoot, EnvSubKey, 'Path', Work);
 end;
 
-#ifdef HaveSignCert
-{ 自签名证书装进本机根证书库后，UAC / 文件属性里的“发行者”才显示证书主体名称。
-  用户不勾选这一项时安装包照样能用，只是发行者仍显示“未知”。 }
-procedure InstallSigningCert;
-var
-  ResultCode: Integer;
-begin
-  if not Exec(ExpandConstant('{sys}\certutil.exe'),
-              '-addstore -f Root "' + ExpandConstant('{app}\rustshot-codesign.cer') + '"',
-              '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
-    MsgBox('证书未能装入受信任的根证书颁发机构（certutil 退出码 ' +
-           IntToStr(ResultCode) + '）。' + #13#10 +
-           '不影响使用，只是“发行者”仍会显示为未知。', mbInformation, MB_OK);
-end;
-
-{ 卸载时把当初装进去的那一枚证书摘掉，别的证书不动。 }
-procedure RemoveSigningCert;
-var
-  ResultCode: Integer;
-begin
-  Exec(ExpandConstant('{sys}\certutil.exe'),
-       '-delstore Root {#CertThumbprint}',
-       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-end;
-#endif
-
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssPostInstall then
-  begin
-    if WizardIsTaskSelected('addtopath') then
-      AddToPath(ExpandConstant('{app}'));
-    #ifdef HaveSignCert
-    if WizardIsTaskSelected('trustcert') then
-      InstallSigningCert;
-    #endif
-  end;
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('addtopath') then
+    AddToPath(ExpandConstant('{app}'));
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
-  begin
     RemoveFromPath(ExpandConstant('{app}'));
-    #ifdef HaveSignCert
-    RemoveSigningCert;
-    #endif
-  end;
 end;
