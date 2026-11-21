@@ -1,4 +1,4 @@
-//! eframe application: control panel, overlay orchestration, clipboard / file plumbing.
+﻿//! eframe application: control panel, overlay orchestration, clipboard / file plumbing.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -34,6 +34,8 @@ pub enum Start {
     Panel,
     Region,
     Full,
+    /// Start straight in the tray (used by the installer's autostart entry).
+    Tray,
 }
 
 /// Result of the (worker thread) save dialog.
@@ -87,10 +89,7 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, start: Start) -> Self {
         let _ = UI_CTX.set(cc.egui_ctx.clone());
         crate::fonts::install_egui_font(&cc.egui_ctx);
-        let mut visuals = egui::Visuals::dark();
-        visuals.panel_fill = egui::Color32::from_rgb(22, 23, 26);
-        visuals.override_text_color = Some(egui::Color32::from_rgb(226, 229, 234));
-        cc.egui_ctx.set_visuals(visuals);
+        crate::theme::apply(&cc.egui_ctx);
         cc.egui_ctx.all_styles_mut(|style| {
             style.spacing.item_spacing = egui::vec2(8.0, 8.0);
             style.spacing.button_padding = egui::vec2(10.0, 6.0);
@@ -471,7 +470,7 @@ impl App {
 
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::Frame::NONE
-            .fill(egui::Color32::from_rgb(28, 30, 35))
+            .fill(crate::theme::BAR)
             .inner_margin(egui::Margin::symmetric(10, 3))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -516,7 +515,7 @@ impl App {
                         ui.label(
                             egui::RichText::new(format!("v{APP_VERSION} · MIT"))
                                 .size(10.5)
-                                .color(egui::Color32::from_rgb(120, 127, 138)),
+                                .color(crate::theme::TEXT_FAINT),
                         );
                     });
                 });
@@ -537,7 +536,7 @@ impl App {
                             "RustShot v{APP_VERSION} · 作者 {APP_AUTHOR} · MIT License"
                         ))
                         .size(12.0)
-                        .color(egui::Color32::from_rgb(150, 157, 168)),
+                        .color(crate::theme::TEXT_WEAK),
                     );
                     ui.add_space(6.0);
                     egui::ScrollArea::vertical()
@@ -554,7 +553,7 @@ impl App {
                         ui.label(
                             egui::RichText::new("协议全文：LICENSE-MIT.md")
                                 .size(11.0)
-                                .color(egui::Color32::from_rgb(120, 127, 138)),
+                                .color(crate::theme::TEXT_FAINT),
                         );
                     });
                 });
@@ -569,7 +568,7 @@ impl App {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::NONE
-                    .fill(egui::Color32::from_rgb(22, 23, 26))
+                    .fill(crate::theme::BG)
                     .inner_margin(egui::Margin::same(18)),
             )
             .show(ui, |ui| {
@@ -578,7 +577,7 @@ impl App {
                     ui.label(
                         egui::RichText::new("截图 · 标注")
                             .size(12.0)
-                            .color(egui::Color32::from_rgb(130, 137, 148)),
+                            .color(crate::theme::TEXT_FAINT),
                     );
                 });
                 ui.add_space(10.0);
@@ -598,7 +597,7 @@ impl App {
                 ui.separator();
                 ui.add_space(8.0);
 
-                ui.label(egui::RichText::new("保存目录").size(12.5).color(egui::Color32::from_rgb(150, 157, 168)))
+                ui.label(egui::RichText::new("保存目录").size(12.5).color(crate::theme::TEXT_WEAK))
                     .on_hover_text(match crate::config::path() {
                         Some(p) => format!("配置保存在 {}\n可手动编辑 save_dir / auto_save", p.display()),
                         None => "配置保存在程序目录下的 config.txt".to_owned(),
@@ -644,7 +643,8 @@ impl App {
 
                 ui.add_space(8.0);
                 egui::Frame::NONE
-                    .fill(egui::Color32::from_rgb(30, 32, 36))
+                    .fill(egui::Color32::from_rgb(0xF1, 0xF3, 0xF6))
+                    .stroke(egui::Stroke::new(1.0, crate::theme::LINE))
                     .corner_radius(8.0)
                     .inner_margin(egui::Margin::same(10))
                     .show(ui, |ui| {
@@ -653,19 +653,19 @@ impl App {
                                 "截图后：拖选区域 · 单击选中窗口 · Enter 复制 · Ctrl+S 另存为",
                             )
                             .size(11.5)
-                            .color(egui::Color32::from_rgb(160, 166, 176)),
+                            .color(crate::theme::TEXT_WEAK),
                         );
                         ui.label(
                             egui::RichText::new(
                                 "标注：矩形 / 箭头 / 画笔 / 文字 / 马赛克 / 序号，Ctrl+Z 撤销，Ctrl+A 全选",
                             )
                             .size(11.5)
-                            .color(egui::Color32::from_rgb(160, 166, 176)),
+                            .color(crate::theme::TEXT_WEAK),
                         );
                         ui.label(
                             egui::RichText::new("全局热键：F1 区域截图 · F2 全屏 · Ctrl+Alt+Q 退出")
                                 .size(11.5)
-                                .color(egui::Color32::from_rgb(160, 166, 176)),
+                                .color(crate::theme::TEXT_WEAK),
                         );
                     });
 
@@ -674,7 +674,7 @@ impl App {
                     ui.label(
                         egui::RichText::new(&self.status)
                             .size(12.0)
-                            .color(egui::Color32::from_rgb(120, 200, 150)),
+                            .color(crate::theme::OK),
                     );
                 }
 
@@ -684,13 +684,13 @@ impl App {
                             ui.label(
                                 egui::RichText::new("托盘不可用")
                                     .size(11.0)
-                                    .color(egui::Color32::from_rgb(220, 140, 120)),
+                                    .color(crate::theme::WARN),
                             );
                         }
                         ui.label(
                             egui::RichText::new(format!("字体：{}", crate::fonts::cjk().map(|f| f.label.clone()).unwrap_or_else(|| "系统默认".into())))
                                 .size(10.5)
-                                .color(egui::Color32::from_rgb(110, 116, 126)),
+                                .color(crate::theme::TEXT_FAINT),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("退出").clicked() {
@@ -806,6 +806,11 @@ impl eframe::App for App {
                 Start::Panel => {}
                 Start::Region => self.begin_capture(ctx, Tool::Select),
                 Start::Full => self.capture_full(),
+                Start::Tray => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                    self.status = "已在托盘常驻：F1 截图 · F2 全屏".to_owned();
+                    crate::util::log("started in tray");
+                }
             }
         }
         if self.session.is_some() && !self.paint_hidden_sent {
@@ -824,6 +829,7 @@ impl eframe::App for App {
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        [0.086, 0.09, 0.102, 1.0]
+        // Matches `theme::BG`, so there is no dark flash while the window resizes.
+        [0.969, 0.973, 0.980, 1.0]
     }
 }

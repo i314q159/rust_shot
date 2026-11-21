@@ -128,6 +128,11 @@ fn clamp_rect_to(r: egui::Rect, bounds: egui::Rect) -> egui::Rect {
     egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, h))
 }
 
+/// Yellow / white swatches need a dark box behind the text editor.
+fn is_bright(c: egui::Color32) -> bool {
+    0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32 > 150.0
+}
+
 fn hit_handle(sel: egui::Rect, p: egui::Pos2, tol: f32) -> Option<usize> {
     let c = sel.center();
     let pts = [
@@ -268,7 +273,7 @@ impl Session {
         let to_phys = |p: egui::Pos2| egui::pos2((p.x - origin.x) * rx, (p.y - origin.y) * ry);
 
         // ---- dim everything outside the selection ----
-        let dim = egui::Color32::from_black_alpha(96);
+        let dim = egui::Color32::from_black_alpha(64);
         match self.sel {
             Some(sel) => {
                 let r = egui::Rect::from_min_max(to_p(sel.min), to_p(sel.max));
@@ -309,7 +314,7 @@ impl Session {
                 }
             }
             None => {
-                painter.rect_filled(screen, 0.0, egui::Color32::from_black_alpha(80));
+                painter.rect_filled(screen, 0.0, egui::Color32::from_black_alpha(52));
                 if let Some(h) = self.hover {
                     let r = egui::Rect::from_min_max(to_p(h.min), to_p(h.max));
                     painter.rect_stroke(
@@ -474,10 +479,16 @@ impl Session {
             pos.y = r.top() + 6.0;
         }
         let galley =
-            painter.layout_no_wrap(text, egui::FontId::proportional(12.5), egui::Color32::WHITE);
+            painter.layout_no_wrap(text, egui::FontId::proportional(12.5), crate::theme::TEXT);
         let bg = egui::Rect::from_min_size(pos, galley.size() + egui::vec2(10.0, 4.0));
-        painter.rect_filled(bg, 4.0, egui::Color32::from_black_alpha(190));
-        painter.galley(pos + egui::vec2(5.0, 2.0), galley, egui::Color32::WHITE);
+        painter.rect_filled(bg, 4.0, crate::theme::CARD);
+        painter.rect_stroke(
+            bg,
+            4.0,
+            egui::Stroke::new(1.0, crate::theme::LINE),
+            egui::StrokeKind::Outside,
+        );
+        painter.galley(pos + egui::vec2(5.0, 2.0), galley, crate::theme::TEXT);
     }
 
     // -----------------------------------------------------------------
@@ -828,16 +839,25 @@ impl Session {
         let mut rects = Vec::new();
         let want_focus = !self.text_focus_done;
         let shapes = &mut self.shapes;
+        // The editor sits on the frozen frame, so give it a background opposite
+        // to the text colour being typed (white text needs a dark box and vice
+        // versa); a fixed white box would swallow the white swatch.
+        let editing = match shapes.get(idx) {
+            Some(Shape::Text { color, .. }) => *color,
+            _ => crate::theme::TEXT,
+        };
+        let box_fill = if is_bright(editing) {
+            egui::Color32::from_black_alpha(200)
+        } else {
+            egui::Color32::from_white_alpha(235)
+        };
         let area = egui::Area::new(egui::Id::unique("rustshot_text_editor"))
             .order(egui::Order::Foreground)
             .fixed_pos(at)
             .show(ctx, |ui| {
                 egui::Frame::NONE
-                    .fill(egui::Color32::from_black_alpha(90))
-                    .stroke(egui::Stroke::new(
-                        1.0,
-                        egui::Color32::from_rgb(64, 158, 255),
-                    ))
+                    .fill(box_fill)
+                    .stroke(egui::Stroke::new(1.0, crate::theme::ACCENT))
                     .corner_radius(3.0)
                     .inner_margin(egui::Margin::symmetric(4, 2))
                     .show(ui, |ui| {
@@ -896,15 +916,15 @@ impl Session {
             .fixed_pos(egui::pos2(x, y))
             .show(ctx, |ui| {
                 egui::Frame::NONE
-                    .fill(egui::Color32::from_rgb(30, 32, 36))
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(64, 68, 76)))
+                    .fill(crate::theme::CARD)
+                    .stroke(egui::Stroke::new(1.0, crate::theme::LINE))
                     .corner_radius(9.0)
                     .inner_margin(egui::Margin::symmetric(8, 6))
                     .shadow(egui::epaint::Shadow {
                         offset: [0, 4],
                         blur: 14,
                         spread: 0,
-                        color: egui::Color32::from_black_alpha(120),
+                        color: egui::Color32::from_black_alpha(40),
                     })
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing = egui::vec2(5.0, 4.0);
@@ -948,7 +968,7 @@ impl Session {
                                     ui.painter().rect_stroke(
                                         rect.expand(2.0),
                                         6.0,
-                                        egui::Stroke::new(1.5, egui::Color32::WHITE),
+                                        egui::Stroke::new(1.5, crate::theme::TEXT),
                                         egui::StrokeKind::Outside,
                                     );
                                 }
@@ -961,7 +981,7 @@ impl Session {
                                         6.0,
                                         egui::Stroke::new(
                                             1.0,
-                                            egui::Color32::from_white_alpha(120),
+                                            egui::Color32::from_rgb(0xA8, 0xB0, 0xBC),
                                         ),
                                         egui::StrokeKind::Outside,
                                     );

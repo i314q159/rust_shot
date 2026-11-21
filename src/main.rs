@@ -7,6 +7,7 @@ mod config;
 mod fonts;
 mod overlay;
 mod shapes;
+mod theme;
 mod util;
 mod win;
 mod worker;
@@ -29,6 +30,7 @@ fn main() {
         match args[i].as_str() {
             "--capture" | "-c" => start = app::Start::Region,
             "--full" | "-f" => start = app::Start::Full,
+            "--tray" | "--silent" => start = app::Start::Tray,
             "--selftest" => {
                 selftest = Some(
                     args.get(i + 1)
@@ -55,6 +57,8 @@ fn main() {
     let already = worker::instance_exists();
     if already {
         let cmd = match start {
+            // Autostart must stay silent when the tool is already resident.
+            app::Start::Tray => return,
             app::Start::Region => worker::CMD_REGION,
             app::Start::Full => worker::CMD_FULL,
             app::Start::Panel => worker::CMD_PANEL,
@@ -92,6 +96,7 @@ fn show_help() {
          无参数            启动主面板\n\
          --capture, -c     立即区域截图\n\
          --full, -f        立即全屏截图到剪贴板\n\
+         --tray, --silent  启动后常驻托盘，不弹出主面板（开机自启用）\n\
          --selftest <png>  离屏渲染一张测试图并退出\n\n\
          全局热键：F1 区域截图 · F2 全屏 · Ctrl+Alt+Q 退出",
     );
