@@ -325,7 +325,6 @@ rust_shot/
 │  ├─ rust_shot.iss   Inno Setup 6 安装脚本（Program Files、快捷方式、PATH、自启、卸载）
 │  └─ build.ps1       一键构建、打包并静默安装最新产物
 ├─ build.rs        把 ICO 写入 exe 资源
-├─ v.txt           最近一次构建的版本号（由 build.ps1 写入，来源是 Cargo.toml）
 ├─ LICENSE-MIT.md
 ├─ README.md       （简体中文）
 └─ README.en.md    （English）

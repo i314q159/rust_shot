@@ -326,7 +326,6 @@ rust_shot/
 │  ├─ lang/           English / Chinese message overrides
 │  └─ build.ps1       build, package and silently install
 ├─ build.rs        embeds the ICO into the exe resources
-├─ v.txt           version of the last build (written by build.ps1 from Cargo.toml)
 ├─ LICENSE-MIT.md
 ├─ README.md       (简体中文)
 └─ README.en.md    (English)

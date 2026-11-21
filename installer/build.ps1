@@ -39,9 +39,6 @@ function Get-InstalledRustShotVersion {
 $version = (Select-String -Path (Join-Path $root 'Cargo.toml') -Pattern '^version\s*=\s*"(.+)"$').Matches[0].Groups[1].Value
 Write-Host "RustShot $version"
 
-# 1b. v.txt 记录最近一次构建用的版本号（Cargo.toml 仍是唯一来源，这里只留档）。
-Set-Content -LiteralPath (Join-Path $root 'v.txt') -Value $version -Encoding UTF8
-
 # 2. Release 构建（质量门由调用方保证；这里至少确保编译通过）。
 Push-Location $root
 try {
