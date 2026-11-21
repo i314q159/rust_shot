@@ -59,9 +59,14 @@ Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\ACKNOWLEDGEMENTS.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE-MIT.md"; DestDir: "{app}"; Flags: ignoreversion
 
+[InstallDelete]
+Type: files; Name: "{autoprograms}\{#MyAppName}.lnk"
+Type: files; Name: "{autoprograms}\{cm:UninstallShortcut}.lnk"
+Type: files; Name: "{autoprograms}\卸载 RustShot.lnk"
+
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "{cm:AppComment}"
-Name: "{autoprograms}\{cm:UninstallShortcut}"; Filename: "{uninstallexe}"; Comment: "{cm:UninstallShortcut}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "{cm:AppComment}"
+Name: "{group}\{cm:UninstallShortcut}"; Filename: "{uninstallexe}"; Comment: "{cm:UninstallShortcut}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "{cm:AppComment}"; Tasks: desktopicon
 
 [Registry]
