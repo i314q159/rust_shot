@@ -8,6 +8,7 @@
 **简体中文** · [English](README.en.md)
 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/i314q159/rust_shot)
+[![Release](https://img.shields.io/github/v/release/i314q159/rust_shot?style=flat-square&color=2F81F7)](https://github.com/i314q159/rust_shot/releases)
 [![Rust](https://img.shields.io/badge/rust-edition%202024-CE412B?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE-MIT.md)
 [![Size](https://img.shields.io/badge/exe-7.5%20MB-lightgrey?style=flat-square)](#下载)
