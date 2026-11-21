@@ -8,6 +8,7 @@ mod fonts;
 mod overlay;
 mod shapes;
 mod theme;
+mod update;
 mod util;
 mod win;
 mod worker;

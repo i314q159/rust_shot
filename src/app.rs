@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::capture::{self, PhysRect};
 use crate::overlay::{self, Export, Outcome, Session, Tool};
+use crate::update::{self, Status as UpdateStatus};
 use crate::worker::{Worker, WorkerEvent};
 
 /// Window title of the control panel (also used to find the HWND).
@@ -85,6 +86,12 @@ pub struct App {
     tray_events: Arc<Mutex<Vec<tray_icon::TrayIconEvent>>>,
     /// Help → 开源声明 window is open.
     show_license: bool,
+    /// Latest GitHub update check result shown in the panel / dialog.
+    update: UpdateStatus,
+    /// Set while the update request runs on its own thread.
+    update_rx: Option<std::sync::mpsc::Receiver<UpdateStatus>>,
+    /// Update dialog is open.
+    show_update: bool,
 }
 
 impl App {
@@ -150,6 +157,45 @@ impl App {
             menu_events,
             tray_events,
             show_license: false,
+            update: UpdateStatus::Idle,
+            update_rx: None,
+            show_update: false,
+        }
+    }
+
+    /// Kick off (or restart) the GitHub update check.
+    fn check_update(&mut self) {
+        if self.update_rx.is_some() {
+            return;
+        }
+        self.update = UpdateStatus::Checking;
+        self.update_rx = Some(update::check_async());
+        self.show_update = true;
+        self.status = "正在检查更新…".to_owned();
+    }
+
+    fn poll_update(&mut self) {
+        let Some(rx) = self.update_rx.take() else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(status) => {
+                match &status {
+                    UpdateStatus::Newer(rel) => {
+                        self.status = format!("发现新版本 v{}，可在更新窗口查看", rel.version);
+                    }
+                    UpdateStatus::Latest(v) => {
+                        self.status = format!("已是最新版本（GitHub 最新 v{v}）");
+                    }
+                    UpdateStatus::Failed(e) => self.status = format!("检查更新失败：{e}"),
+                    _ => {}
+                }
+                self.update = status;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => self.update_rx = Some(rx),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.update = UpdateStatus::Failed("检查更新的线程意外退出".to_owned());
+            }
         }
     }
 
@@ -536,6 +582,15 @@ impl App {
                         }
                     });
                     ui.menu_button("帮助", |ui| {
+                        if ui.button("检查更新").clicked() {
+                            self.check_update();
+                            ui.close();
+                        }
+                        if ui.button("打开发布页（GitHub）").clicked() {
+                            update::open_page(update::RELEASES_URL);
+                            ui.close();
+                        }
+                        ui.separator();
                         if ui.button("开源声明（MIT）").clicked() {
                             self.show_license = true;
                             ui.close();
@@ -547,12 +602,35 @@ impl App {
                                 .size(10.5)
                                 .color(crate::theme::TEXT_FAINT),
                         );
+                        match self.update.clone() {
+                            UpdateStatus::Newer(rel) => {
+                                let badge = egui::Button::new(
+                                    egui::RichText::new(format!("可更新 v{}", rel.version))
+                                        .size(10.5)
+                                        .color(crate::theme::ACCENT),
+                                )
+                                .frame(false);
+                                if ui.add(badge).on_hover_text("点击查看更新内容").clicked()
+                                {
+                                    self.show_update = true;
+                                }
+                            }
+                            UpdateStatus::Checking => {
+                                ui.label(
+                                    egui::RichText::new("检查更新…")
+                                        .size(10.5)
+                                        .color(crate::theme::TEXT_FAINT),
+                                );
+                            }
+                            _ => {}
+                        }
                     });
                 });
             });
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
+        self.update_dialog(ctx);
         if self.show_license {
             let mut open = true;
             egui::Window::new("开源声明 · MIT License")
@@ -590,6 +668,162 @@ impl App {
             if !open {
                 self.show_license = false;
             }
+        }
+    }
+
+    /// Update dialog: version numbers, release notes and the download entry.
+    fn update_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_update {
+            return;
+        }
+        let mut open = true;
+        let mut retry = false;
+        let mut close = false;
+        let mut page: Option<String> = None;
+        let current = self.update.clone();
+        let release_url = match &current {
+            UpdateStatus::Newer(rel) => rel.url.clone(),
+            _ => update::RELEASES_URL.to_owned(),
+        };
+        egui::Window::new("检查更新")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(440.0)
+            .show(ctx, |ui| {
+                ui.label(
+                    egui::RichText::new(format!("当前版本 v{APP_VERSION} · 仓库 {}", update::REPO))
+                        .size(11.0)
+                        .color(crate::theme::TEXT_FAINT),
+                );
+                ui.add_space(6.0);
+                match &current {
+                    UpdateStatus::Idle => {
+                        ui.label(egui::RichText::new("尚未检查更新").size(12.5));
+                    }
+                    UpdateStatus::Checking => {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(
+                                egui::RichText::new("正在连接 GitHub 检查最新版本…").size(12.5),
+                            );
+                        });
+                    }
+                    UpdateStatus::Latest(version) => {
+                        ui.label(
+                            egui::RichText::new(format!("已是最新版本（GitHub 最新 v{version}）"))
+                                .size(13.0)
+                                .color(crate::theme::OK),
+                        );
+                        ui.label(
+                            egui::RichText::new("有新版本发布时可以在这里直接打开发布页下载。")
+                                .size(11.5)
+                                .color(crate::theme::TEXT_WEAK),
+                        );
+                    }
+                    UpdateStatus::Newer(rel) => {
+                        ui.label(
+                            egui::RichText::new(format!("发现新版本 v{}", rel.version))
+                                .size(15.0)
+                                .strong()
+                                .color(crate::theme::OK),
+                        );
+                        let mut meta = rel.name.clone();
+                        if !rel.published.is_empty() {
+                            if !meta.trim().is_empty() {
+                                meta.push_str(" · ");
+                            }
+                            meta.push_str("发布于 ");
+                            meta.push_str(&rel.published);
+                        }
+                        if !meta.trim().is_empty() {
+                            ui.label(
+                                egui::RichText::new(meta)
+                                    .size(11.0)
+                                    .color(crate::theme::TEXT_FAINT),
+                            );
+                        }
+                        ui.add_space(4.0);
+                        if rel.notes.trim().is_empty() {
+                            ui.label(
+                                egui::RichText::new("该版本没有填写更新说明。")
+                                    .size(11.5)
+                                    .color(crate::theme::TEXT_WEAK),
+                            );
+                        } else {
+                            egui::Frame::NONE
+                                .fill(egui::Color32::from_rgb(0xF1, 0xF3, 0xF6))
+                                .stroke(egui::Stroke::new(1.0, crate::theme::LINE))
+                                .corner_radius(6.0)
+                                .inner_margin(egui::Margin::same(8))
+                                .show(ui, |ui| {
+                                    egui::ScrollArea::vertical()
+                                        .max_height(180.0)
+                                        .auto_shrink([false, false])
+                                        .show(ui, |ui| {
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(&rel.notes)
+                                                        .monospace()
+                                                        .size(11.0),
+                                                )
+                                                .wrap(),
+                                            );
+                                        });
+                                });
+                        }
+                    }
+                    UpdateStatus::Failed(err) => {
+                        ui.label(
+                            egui::RichText::new("检查更新失败")
+                                .size(13.0)
+                                .color(crate::theme::WARN),
+                        );
+                        ui.label(
+                            egui::RichText::new(err)
+                                .size(11.5)
+                                .color(crate::theme::TEXT_WEAK),
+                        );
+                        ui.label(
+                            egui::RichText::new("也可以直接打开发布页确认最新版本。")
+                                .size(11.0)
+                                .color(crate::theme::TEXT_FAINT),
+                        );
+                    }
+                }
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    let busy = matches!(current, UpdateStatus::Checking);
+                    if ui
+                        .add_enabled(!busy, egui::Button::new("重新检查"))
+                        .clicked()
+                    {
+                        retry = true;
+                    }
+                    if ui.button("打开发布页").clicked() {
+                        page = Some(release_url.clone());
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("关闭").clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            });
+        if retry {
+            self.check_update();
+        }
+        if close {
+            open = false;
+        }
+        if let Some(url) = page {
+            update::open_page(&url);
+            open = false;
+        }
+        if !open {
+            self.show_update = false;
         }
     }
 
@@ -731,6 +965,32 @@ impl App {
                                 let ctx = ui.ctx().clone();
                                 self.hide_to_tray(&ctx);
                             }
+                            match self.update.clone() {
+                                UpdateStatus::Newer(rel) => {
+                                    if ui
+                                        .button(
+                                            egui::RichText::new(format!("新版本 v{}", rel.version))
+                                                .color(crate::theme::ACCENT),
+                                        )
+                                        .on_hover_text("查看更新说明并打开发布页")
+                                        .clicked()
+                                    {
+                                        self.show_update = true;
+                                    }
+                                }
+                                UpdateStatus::Checking => {
+                                    ui.add_enabled(false, egui::Button::new("检查更新…"));
+                                }
+                                _ => {
+                                    if ui
+                                        .button("检查更新")
+                                        .on_hover_text(format!("从 GitHub 检查 {} 的最新版本", update::REPO))
+                                        .clicked()
+                                    {
+                                        self.check_update();
+                                    }
+                                }
+                            }
                         });
                     });
                 });
@@ -830,6 +1090,7 @@ impl eframe::App for App {
         }
         self.poll_save();
         self.poll_dir();
+        self.poll_update();
         self.pump_worker(ctx);
         self.pump_tray(ctx);
         if self.panel_park.is_some() {
